@@ -7,29 +7,31 @@ import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { Legend } from "@/components/calendar/Legend";
 import { DaySheet } from "@/components/calendar/DaySheet";
 import { getMonthCalendar } from "@/lib/actions";
-import type { BodyPartRow, CalendarDaySummary, MonthStats } from "@/lib/types";
+import type { BodyPartRow, CalendarDaySummary, OverviewStats } from "@/lib/types";
 
 export function HomeClient({
   initialYear,
   initialMonth,
   initialDays,
-  initialStats,
+  overviewStats,
   bodyParts,
 }: {
   initialYear: number;
   initialMonth: number;
   initialDays: CalendarDaySummary[];
-  initialStats: MonthStats;
+  overviewStats: OverviewStats;
   bodyParts: BodyPartRow[];
 }) {
   const router = useRouter();
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
   const [days, setDays] = useState(initialDays);
-  const [stats, setStats] = useState(initialStats);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // Note: overviewStats (all-time / this-month / this-week) intentionally
+  // does NOT change when browsing other months below - it always reflects
+  // real "today", regardless of which month the calendar is showing.
   const navigate = (direction: -1 | 1) => {
     let newMonth = month + direction;
     let newYear = year;
@@ -45,7 +47,6 @@ export function HomeClient({
     startTransition(async () => {
       const result = await getMonthCalendar(newYear, newMonth);
       setDays(result.days);
-      setStats(result.stats);
     });
   };
 
@@ -78,12 +79,9 @@ export function HomeClient({
       <Legend />
 
       <div className="grid grid-cols-3 gap-3 px-5 pt-3">
-        <StatCard label="Sessions" value={stats.totalSessions} />
-        <StatCard label="Gym days" value={stats.gymDays} />
-        <StatCard
-          label="Week streak"
-          value={stats.currentStreakWeeks}
-        />
+        <StatCard label="All time" value={overviewStats.allTime} />
+        <StatCard label="This month" value={overviewStats.thisMonth} />
+        <StatCard label="This week" value={overviewStats.thisWeek} />
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-5 pb-6 pt-10 [background:linear-gradient(to_top,#F6F5F2_60%,transparent)]">

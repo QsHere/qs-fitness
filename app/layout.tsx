@@ -16,7 +16,7 @@ const display = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "qs-fitness",
+  title: "QS Fitness",
   description: "Your gym log.",
   manifest: "/manifest.json",
   icons: {
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "qs-fitness",
+    title: "QS Fitness",
   },
 };
 

@@ -1,4 +1,4 @@
-import { getBodyParts, getMonthCalendar } from "@/lib/actions";
+import { getBodyParts, getMonthCalendar, getOverviewStats } from "@/lib/actions";
 import { HomeClient } from "@/components/HomeClient";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +8,10 @@ export default async function Home() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  const [{ days, stats }, bodyParts] = await Promise.all([
+  const [{ days }, bodyParts, overviewStats] = await Promise.all([
     getMonthCalendar(year, month),
     getBodyParts(),
+    getOverviewStats(),
   ]);
 
   return (
@@ -18,7 +19,7 @@ export default async function Home() {
       initialYear={year}
       initialMonth={month}
       initialDays={days}
-      initialStats={stats}
+      overviewStats={overviewStats}
       bodyParts={bodyParts}
     />
   );

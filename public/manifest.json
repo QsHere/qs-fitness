@@ -1,6 +1,6 @@
 {
-  "name": "qs-fitness",
-  "short_name": "qs-fitness",
+  "name": "QS Fitness",
+  "short_name": "QS Fitness",
   "description": "Your gym log.",
   "start_url": "/",
   "scope": "/",

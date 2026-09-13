@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { calendarColorForBodyPart } from "@/lib/constants";
+import { toDateKey } from "@/lib/utils";
 import type {
   BodyPartRow,
   CalendarDaySummary,
@@ -11,7 +12,6 @@ import type {
   ExerciseBlockDraft,
   ExerciseRow,
   LocationRow,
-  MonthStats,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -93,10 +93,14 @@ export async function addCustomExercise(
 
 export async function getLastExerciseRecord(exerciseId: string) {
   const supabase = createClient();
+  // Ordered by the session's actual date, not by when the row was inserted -
+  // otherwise backfilling an older date after already logging a more recent
+  // one would incorrectly surface the backfilled entry as "last time".
   const { data: lastBlock } = await supabase
     .from("session_exercises")
-    .select("id, notes, sessions(session_date)")
+    .select("id, notes, sessions!inner(session_date)")
     .eq("exercise_id", exerciseId)
+    .order("session_date", { referencedTable: "sessions", ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -124,7 +128,7 @@ export async function getLastExerciseRecord(exerciseId: string) {
 export async function getMonthCalendar(
   year: number,
   month: number // 1-12
-): Promise<{ days: CalendarDaySummary[]; stats: MonthStats }> {
+): Promise<{ days: CalendarDaySummary[] }> {
   const supabase = createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = new Date(year, month, 0).getDate();
@@ -169,49 +173,55 @@ export async function getMonthCalendar(
     ([date, colors]) => ({ date, bodyPartColors: Array.from(colors) })
   );
 
-  // Rough weekly streak: consecutive weeks (Mon-Sun) with >=1 gym day, ending this week.
-  const { data: allSessions } = await supabase
-    .from("sessions")
-    .select("session_date")
-    .order("session_date", { ascending: false })
-    .limit(90);
-  const streak = computeWeekStreak((allSessions ?? []).map((s) => s.session_date));
+  return { days };
+}
+
+// ---------------------------------------------------------------------------
+// Overview stats - always reflect real "today", independent of whatever
+// month the calendar above happens to be scrolled to.
+// ---------------------------------------------------------------------------
+
+function mondayOfThisWeek(): string {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7; // Mon=0..Sun=6
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day);
+  return toDateKey(monday);
+}
+
+function firstOfThisMonth(): string {
+  const now = new Date();
+  return toDateKey(new Date(now.getFullYear(), now.getMonth(), 1));
+}
+
+export async function getOverviewStats(): Promise<{
+  allTime: number;
+  thisMonth: number;
+  thisWeek: number;
+}> {
+  const supabase = createClient();
+
+  const [allTimeRes, monthRes, weekRes] = await Promise.all([
+    supabase.from("sessions").select("id", { count: "exact", head: true }),
+    supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .gte("session_date", firstOfThisMonth()),
+    supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .gte("session_date", mondayOfThisWeek()),
+  ]);
+
+  if (allTimeRes.error) throw allTimeRes.error;
+  if (monthRes.error) throw monthRes.error;
+  if (weekRes.error) throw weekRes.error;
 
   return {
-    days,
-    stats: {
-      totalSessions: sessionIds.length,
-      gymDays: colorsByDate.size,
-      currentStreakWeeks: streak,
-    },
+    allTime: allTimeRes.count ?? 0,
+    thisMonth: monthRes.count ?? 0,
+    thisWeek: weekRes.count ?? 0,
   };
-}
-
-function isoWeekKey(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = (d.getDay() + 6) % 7; // Mon=0
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - day);
-  return monday.toISOString().slice(0, 10);
-}
-
-function computeWeekStreak(dates: string[]): number {
-  if (dates.length === 0) return 0;
-  const weeks = new Set(dates.map(isoWeekKey));
-  let streak = 0;
-  const cursor = new Date();
-  for (;;) {
-    const day = (cursor.getDay() + 6) % 7;
-    const monday = new Date(cursor);
-    monday.setDate(cursor.getDate() - day - streak * 7);
-    const key = monday.toISOString().slice(0, 10);
-    if (weeks.has(key)) {
-      streak += 1;
-    } else {
-      break;
-    }
-  }
-  return streak;
 }
 
 // ---------------------------------------------------------------------------

@@ -123,10 +123,10 @@ export interface CalendarDaySummary {
   bodyPartColors: string[]; // distinct colours trained that day, in sort order
 }
 
-export interface MonthStats {
-  totalSessions: number;
-  gymDays: number;
-  currentStreakWeeks: number;
+export interface OverviewStats {
+  allTime: number;
+  thisMonth: number;
+  thisWeek: number;
 }
 
 // Minimal Database type so @supabase/ssr generics don't complain.
