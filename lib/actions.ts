@@ -3,13 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { calendarColorForBodyPart } from "@/lib/constants";
-import { toDateKey } from "@/lib/utils";
+import { toDateKey, estimatedOneRepMax, effectiveWeight } from "@/lib/utils";
 import type {
   BodyPartRow,
   CalendarDaySummary,
+  CardioHistoryPoint,
+  CardioSummary,
   DayExerciseDetail,
   DaySessionDetail,
   ExerciseBlockDraft,
+  ExerciseHistoryPoint,
+  ExerciseHistoryResult,
+  ExercisePRSummary,
   ExerciseRow,
   LocationRow,
 } from "@/lib/types";
@@ -75,12 +80,13 @@ export async function addCustomBodyPart(
 
 export async function addCustomExercise(
   bodyPartId: string,
-  name: string
+  name: string,
+  isBodyweight = false
 ): Promise<ExerciseRow> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("exercises")
-    .insert({ body_part_id: bodyPartId, name, is_custom: true })
+    .insert({ body_part_id: bodyPartId, name, is_custom: true, is_bodyweight: isBodyweight })
     .select()
     .single();
   if (error) throw error;
@@ -504,3 +510,340 @@ export async function getOrCreateSessionForDate(
   revalidatePath("/");
   return created.id as string;
 }
+
+// ---------------------------------------------------------------------------
+// Bodyweight setting - used to score bodyweight-flagged exercises correctly
+// ---------------------------------------------------------------------------
+
+export async function getBodyweightKg(): Promise<number | null> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "bodyweight_kg")
+    .maybeSingle();
+  if (!data) return null;
+  const n = Number(data.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function setBodyweightKg(kg: number) {
+  const supabase = createClient();
+  const { error } = await supabase.from("app_settings").upsert({
+    key: "bodyweight_kg",
+    value: String(kg),
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  revalidatePath("/analytics");
+}
+
+// ---------------------------------------------------------------------------
+// Analytics / Personal Records
+//
+// Deliberately NOT scored by volume (weight x reps) - see estimatedOneRepMax
+// in lib/utils.ts for why. Everything below fetches sets in one pass per
+// page load and reduces them in Node, since a personal gym log is a small
+// enough dataset (low thousands of rows at most) that this stays instant
+// without needing per-exercise round trips.
+// ---------------------------------------------------------------------------
+
+type RawSetRow = {
+  weight: number | null;
+  reps: number | null;
+};
+
+type RawBlockRow = {
+  exercise_id: string;
+  sessions: { session_date: string } | null;
+  exercise_sets: RawSetRow[] | null;
+};
+
+export async function getExercisePRs(): Promise<ExercisePRSummary[]> {
+  const supabase = createClient();
+  const bodyweightKg = await getBodyweightKg();
+
+  const [{ data: exercises, error: exError }, { data: bodyParts, error: bpError }, { data: blocks, error: blocksError }] =
+    await Promise.all([
+      supabase.from("exercises").select("id, name, body_part_id, is_bodyweight"),
+      supabase.from("body_parts").select("id, name, color_hex, is_cardio"),
+      supabase
+        .from("session_exercises")
+        .select("exercise_id, sessions!inner(session_date), exercise_sets(weight, reps)"),
+    ]);
+  if (exError) throw exError;
+  if (bpError) throw bpError;
+  if (blocksError) throw blocksError;
+
+  const exMap = new Map((exercises ?? []).map((e) => [e.id, e]));
+  const bpMap = new Map((bodyParts ?? []).map((b) => [b.id, b]));
+
+  const byExercise = new Map<string, { date: string; sets: RawSetRow[] }[]>();
+  for (const raw of (blocks ?? []) as unknown as RawBlockRow[]) {
+    const date = raw.sessions?.session_date;
+    if (!date) continue;
+    const list = byExercise.get(raw.exercise_id) ?? [];
+    list.push({ date, sets: raw.exercise_sets ?? [] });
+    byExercise.set(raw.exercise_id, list);
+  }
+
+  const results: ExercisePRSummary[] = [];
+
+  for (const [exerciseId, entries] of byExercise) {
+    const ex = exMap.get(exerciseId);
+    if (!ex) continue;
+    const bp = bpMap.get(ex.body_part_id);
+    if (!bp || bp.is_cardio) continue; // cardio scored separately
+
+    const usesEstimatedOneRepMax = !(ex.is_bodyweight && !bodyweightKg);
+
+    entries.sort((a, b) => a.date.localeCompare(b.date));
+
+    const sessionBests = entries.map((entry) => {
+      let value = 0;
+      let label = "";
+      for (const s of entry.sets) {
+        let v: number;
+        let l: string;
+        if (usesEstimatedOneRepMax) {
+          const w = effectiveWeight(s.weight, ex.is_bodyweight, bodyweightKg);
+          v = estimatedOneRepMax(w, s.reps ?? 0);
+          l = `${s.weight ?? 0}kg × ${s.reps ?? 0}`;
+        } else {
+          v = s.reps ?? 0;
+          l = `${s.reps ?? 0} reps`;
+        }
+        if (v > value) {
+          value = v;
+          label = l;
+        }
+      }
+      return { date: entry.date, value, label };
+    });
+
+    let best = sessionBests[0];
+    for (const sb of sessionBests) if (sb.value >= best.value) best = sb;
+
+    const last = sessionBests[sessionBests.length - 1];
+    const secondLast = sessionBests[sessionBests.length - 2];
+
+    results.push({
+      exercise_id: exerciseId,
+      exercise_name: ex.name,
+      body_part_id: bp.id,
+      body_part_name: bp.name,
+      color_hex: bp.color_hex,
+      is_bodyweight: ex.is_bodyweight,
+      usesEstimatedOneRepMax,
+      bestValue: Math.round(best.value * 10) / 10,
+      bestUnit: usesEstimatedOneRepMax ? "kg" : "reps",
+      bestSetLabel: best.label,
+      bestDate: best.date,
+      isNewPR: last.date === best.date && sessionBests.length > 1,
+      trendDelta: secondLast
+        ? Math.round((last.value - secondLast.value) * 10) / 10
+        : null,
+      sessionsCount: entries.length,
+    });
+  }
+
+  results.sort((a, b) => b.bestDate.localeCompare(a.bestDate));
+  return results;
+}
+
+export async function getExerciseHistory(
+  exerciseId: string
+): Promise<ExerciseHistoryResult | null> {
+  const supabase = createClient();
+  const bodyweightKg = await getBodyweightKg();
+
+  const { data: ex, error: exError } = await supabase
+    .from("exercises")
+    .select("id, name, is_bodyweight, body_parts(color_hex)")
+    .eq("id", exerciseId)
+    .single();
+  if (exError) throw exError;
+  if (!ex) return null;
+
+  const colorHex = (ex as unknown as { body_parts: { color_hex: string } })
+    .body_parts?.color_hex ?? "#16171B";
+
+  const { data: blocks, error: blocksError } = await supabase
+    .from("session_exercises")
+    .select("sessions!inner(session_date), exercise_sets(weight, reps)")
+    .eq("exercise_id", exerciseId);
+  if (blocksError) throw blocksError;
+
+  const usesEstimatedOneRepMax = !(ex.is_bodyweight && !bodyweightKg);
+
+  const entries = ((blocks ?? []) as unknown as RawBlockRow[])
+    .map((b) => ({ date: b.sessions?.session_date, sets: b.exercise_sets ?? [] }))
+    .filter((e): e is { date: string; sets: RawSetRow[] } => !!e.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let runningBest = 0;
+  const points: ExerciseHistoryPoint[] = entries.map((entry) => {
+    let value = 0;
+    let label = "";
+    for (const s of entry.sets) {
+      let v: number;
+      let l: string;
+      if (usesEstimatedOneRepMax) {
+        const w = effectiveWeight(s.weight, ex.is_bodyweight, bodyweightKg);
+        v = estimatedOneRepMax(w, s.reps ?? 0);
+        l = `${s.weight ?? 0}kg × ${s.reps ?? 0}`;
+      } else {
+        v = s.reps ?? 0;
+        l = `${s.reps ?? 0} reps`;
+      }
+      if (v > value) {
+        value = v;
+        label = l;
+      }
+    }
+    const isAllTimeBestSoFar = value >= runningBest && value > 0;
+    if (value > runningBest) runningBest = value;
+    return {
+      session_date: entry.date,
+      value: Math.round(value * 10) / 10,
+      setLabel: label,
+      isAllTimeBestSoFar,
+    };
+  });
+
+  return {
+    exercise_id: ex.id,
+    exercise_name: ex.name,
+    color_hex: colorHex,
+    is_bodyweight: ex.is_bodyweight,
+    bodyweightKnown: bodyweightKg != null,
+    usesEstimatedOneRepMax,
+    unit: usesEstimatedOneRepMax ? "kg" : "reps",
+    points,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cardio - scored differently (duration/distance trend, no 1RM concept)
+// ---------------------------------------------------------------------------
+
+type RawCardioSetRow = {
+  duration_min: number | null;
+  distance_km: number | null;
+  speed_kmh: number | null;
+  incline_level: number | null;
+  steps: number | null;
+  speed_level: number | null;
+};
+
+type RawCardioBlockRow = {
+  exercise_id: string;
+  sessions: { session_date: string } | null;
+  exercise_sets: RawCardioSetRow[] | null;
+};
+
+function cardioLabel(s: RawCardioSetRow): string {
+  const parts: string[] = [];
+  if (s.speed_kmh) parts.push(`${s.speed_kmh} km/h`);
+  if (s.distance_km) parts.push(`${s.distance_km} km`);
+  if (s.steps) parts.push(`${s.steps} steps`);
+  if (s.speed_level) parts.push(`level ${s.speed_level}`);
+  if (s.incline_level) parts.push(`${s.incline_level}% incline`);
+  if (s.duration_min) parts.push(`${s.duration_min} min`);
+  return parts.join(" · ");
+}
+
+export async function getCardioSummaries(): Promise<CardioSummary[]> {
+  const supabase = createClient();
+
+  const [{ data: exercises, error: exError }, { data: bodyParts, error: bpError }, { data: blocks, error: blocksError }] =
+    await Promise.all([
+      supabase.from("exercises").select("id, name, body_part_id"),
+      supabase.from("body_parts").select("id, color_hex, is_cardio"),
+      supabase
+        .from("session_exercises")
+        .select(
+          "exercise_id, sessions!inner(session_date), exercise_sets(duration_min, distance_km, speed_kmh, incline_level, steps, speed_level)"
+        ),
+    ]);
+  if (exError) throw exError;
+  if (bpError) throw bpError;
+  if (blocksError) throw blocksError;
+
+  const exMap = new Map((exercises ?? []).map((e) => [e.id, e]));
+  const bpMap = new Map((bodyParts ?? []).map((b) => [b.id, b]));
+
+  const byExercise = new Map<string, { date: string; sets: RawCardioSetRow[] }[]>();
+  for (const raw of (blocks ?? []) as unknown as RawCardioBlockRow[]) {
+    const date = raw.sessions?.session_date;
+    if (!date) continue;
+    const ex = exMap.get(raw.exercise_id);
+    if (!ex) continue;
+    const bp = bpMap.get(ex.body_part_id);
+    if (!bp?.is_cardio) continue;
+    const list = byExercise.get(raw.exercise_id) ?? [];
+    list.push({ date, sets: raw.exercise_sets ?? [] });
+    byExercise.set(raw.exercise_id, list);
+  }
+
+  const results: CardioSummary[] = [];
+  for (const [exerciseId, entries] of byExercise) {
+    const ex = exMap.get(exerciseId)!;
+    const bp = bpMap.get(ex.body_part_id)!;
+    entries.sort((a, b) => a.date.localeCompare(b.date));
+
+    let bestDuration = 0;
+    let bestDistance: number | null = null;
+    for (const entry of entries) {
+      for (const s of entry.sets) {
+        if (s.duration_min && s.duration_min > bestDuration) bestDuration = s.duration_min;
+        if (s.distance_km && (bestDistance === null || s.distance_km > bestDistance)) {
+          bestDistance = s.distance_km;
+        }
+      }
+    }
+
+    const last = entries[entries.length - 1];
+    results.push({
+      exercise_id: exerciseId,
+      exercise_name: ex.name,
+      color_hex: bp.color_hex,
+      bestDurationMin: bestDuration,
+      bestDistanceKm: bestDistance,
+      lastSessionLabel: last.sets[0] ? cardioLabel(last.sets[0]) : "",
+      lastDate: last.date,
+      sessionsCount: entries.length,
+    });
+  }
+
+  results.sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+  return results;
+}
+
+export async function getCardioHistory(
+  exerciseId: string
+): Promise<CardioHistoryPoint[]> {
+  const supabase = createClient();
+  const { data: blocks, error } = await supabase
+    .from("session_exercises")
+    .select(
+      "sessions!inner(session_date), exercise_sets(duration_min, distance_km, speed_kmh, incline_level, steps, speed_level)"
+    )
+    .eq("exercise_id", exerciseId);
+  if (error) throw error;
+
+  return ((blocks ?? []) as unknown as RawCardioBlockRow[])
+    .map((b) => {
+      const date = b.sessions?.session_date;
+      const s = b.exercise_sets?.[0];
+      if (!date || !s) return null;
+      return {
+        session_date: date,
+        duration_min: s.duration_min ?? 0,
+        label: cardioLabel(s),
+      };
+    })
+    .filter((p): p is CardioHistoryPoint => !!p)
+    .sort((a, b) => a.session_date.localeCompare(b.session_date));
+}
+

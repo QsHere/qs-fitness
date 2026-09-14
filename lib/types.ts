@@ -31,6 +31,7 @@ export interface ExerciseRow {
   body_part_id: string;
   name: string;
   is_custom: boolean;
+  is_bodyweight: boolean;
   cardio_fields: CardioField[] | null;
   created_at: string;
 }
@@ -128,6 +129,61 @@ export interface OverviewStats {
   thisMonth: number;
   thisWeek: number;
 }
+
+// ---- Analytics / PR types --------------------------------------------------
+
+export interface ExercisePRSummary {
+  exercise_id: string;
+  exercise_name: string;
+  body_part_id: string;
+  body_part_name: string;
+  color_hex: string;
+  is_bodyweight: boolean;
+  usesEstimatedOneRepMax: boolean; // false when scored by reps instead (bodyweight, no bodyweight set)
+  bestValue: number;
+  bestUnit: "kg" | "reps";
+  bestSetLabel: string;
+  bestDate: string;
+  isNewPR: boolean;
+  trendDelta: number | null;
+  sessionsCount: number;
+}
+
+export interface ExerciseHistoryPoint {
+  session_date: string;
+  value: number;
+  setLabel: string;
+  isAllTimeBestSoFar: boolean;
+}
+
+export interface ExerciseHistoryResult {
+  exercise_id: string;
+  exercise_name: string;
+  color_hex: string;
+  is_bodyweight: boolean;
+  bodyweightKnown: boolean;
+  usesEstimatedOneRepMax: boolean;
+  unit: "kg" | "reps";
+  points: ExerciseHistoryPoint[];
+}
+
+export interface CardioSummary {
+  exercise_id: string;
+  exercise_name: string;
+  color_hex: string;
+  bestDurationMin: number;
+  bestDistanceKm: number | null;
+  lastSessionLabel: string;
+  lastDate: string;
+  sessionsCount: number;
+}
+
+export interface CardioHistoryPoint {
+  session_date: string;
+  duration_min: number;
+  label: string;
+}
+
 
 // Minimal Database type so @supabase/ssr generics don't complain.
 // Not a full generated type — fine for this project's scope.

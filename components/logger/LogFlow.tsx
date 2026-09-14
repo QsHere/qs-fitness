@@ -171,6 +171,7 @@ export function LogFlow({
       body_part_id: block.body_part_id,
       name: block.exercise_name,
       is_custom: false,
+      is_bodyweight: false,
       cardio_fields: block.cardio_fields,
       created_at: "",
     };
@@ -184,8 +185,8 @@ export function LogFlow({
     });
   };
 
-  const addNewExercise = async (bp: BodyPartRow, name: string) => {
-    const ex = await addCustomExercise(bp.id, name);
+  const addNewExercise = async (bp: BodyPartRow, name: string, isBodyweight: boolean) => {
+    const ex = await addCustomExercise(bp.id, name, isBodyweight);
     setExercises((prev) => [...prev, ex]);
     await selectExercise(bp, ex);
   };
@@ -405,7 +406,7 @@ export function LogFlow({
                   <ExercisePicker
                     exercises={exercises}
                     onSelect={(ex) => selectExercise(step.bodyPart, ex)}
-                    onAddNew={(name) => addNewExercise(step.bodyPart, name)}
+                    onAddNew={(name, isBodyweight) => addNewExercise(step.bodyPart, name, isBodyweight)}
                   />
                 </div>
               )}

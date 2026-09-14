@@ -61,9 +61,10 @@ If you still only see "Create shortcut" after deploying: open Chrome's three-dot
 
 ## Database migrations
 
-If you've already run `supabase/schema.sql` once on a live project, don't re-run the whole file for future schema changes - instead run the individual files in `supabase/migrations/` in order, in the Supabase SQL Editor. Right now there's one:
+If you've already run `supabase/schema.sql` once on a live project, don't re-run the whole file for future schema changes - instead run the individual files in `supabase/migrations/` in order, in the Supabase SQL Editor. Right now there are two:
 
 - `001_treadmill_incline.sql` - adds an incline (%) field to Treadmill.
+- `002_bodyweight_tracking.sql` - adds the `is_bodyweight` flag on exercises (flags Sit-Ups and Captain Chair by default) and a small `app_settings` table used to store your bodyweight. Needed for the Progress & PRs page below.
 
 ## Changes in this update
 
@@ -76,6 +77,18 @@ If you've already run `supabase/schema.sql` once on a live project, don't re-run
 - Calendar dots are now 2 colours: red for upper body (Chest/Back/Shoulder/Arm/Abs), blue for Lower Body, with Cardio as a neutral grey (it doesn't cleanly belong to either - see `lib/constants.ts` if you want to change that mapping). The day-detail view and logger still show every body part's real, distinct colour - the simplification is calendar-only.
 - Replaced the body-part tile icons with emoji that actually match: 🏋️ Chest, 🧗 Back, 🙆 Shoulder, 🔥 Abs, 💪 Arm, ❤️‍🔥 Cardio, 🦵 Lower Body.
 - Added error boundaries (`app/error.tsx`, `app/log/error.tsx`) and `export const dynamic = "force-dynamic"` on the data-loading pages. This won't eliminate every possible transient Supabase hiccup, but it means a server-side error now shows a "Try again" button in-app instead of a hard crash that only a manual refresh could fix - and removing the static/cached rendering path removes one likely source of that class of error.
+
+## Progress & PRs
+
+Tap the trend icon on the home screen to open `/analytics`. This is deliberately **not** scored by volume (weight x reps) - two things you flagged make that unreliable:
+
+- **Bodyweight exercises** (Sit-Ups, Captain Chair) are logged with `weight = 0` meaning "no added weight", not "no load" - volume would read zero forever even as your reps climb. These are flagged `is_bodyweight` on the exercise (toggle it when adding a new custom exercise too) and scored by **best reps** instead, unless you set your bodyweight (prompted on the page) - once set, your bodyweight is added to the logged weight so these get proper estimated-1RM tracking too, same as everything else.
+- **Everything else** is scored by **estimated 1-rep-max** (Epley formula: `weight x (1 + reps/30)`, capped at the rep-12 term to avoid drift on high-rep sets), not volume - so going heavier for fewer reps correctly shows up as progress even when total volume drops.
+- **Cardio** doesn't fit either model, so it's tracked separately: best distance/duration as headline stats, duration charted over time, full detail (speed, incline, steps) in the tooltip/session list.
+
+Each exercise's card shows its current PR, a "vs last session" delta, and a "NEW PR" badge when your most recent session set the record. Tapping a card opens a chart of that exercise's whole history, with the all-time-best point highlighted.
+
+Performance note: the whole PR list loads in one query on page load (server-rendered, no spinner) - tapping into a single exercise's chart is a second small, fast query. The one real cost is that this page pulls in a charting library (recharts) that the rest of the app doesn't need, so it's a heavier page than Home or the logger - code-split so it doesn't affect their load time, but worth knowing if `/analytics` itself feels slower to open on a poor connection.
 
 ## Data model notes
 

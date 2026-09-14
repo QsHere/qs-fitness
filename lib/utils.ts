@@ -36,3 +36,33 @@ export function setVolume(set: {
   if (!set.weight || !set.reps) return 0;
   return set.weight * set.reps;
 }
+
+// The actual fix for "0kg on Captain Chair doesn't mean zero load" and
+// "I added weight but did fewer reps, that's still progress": volume
+// (weight x reps) can't tell these apart correctly. Estimated one-rep-max
+// (Epley formula) can, because it estimates true strength rather than just
+// multiplying two numbers - heavier weight for fewer reps correctly scores
+// as equal-or-better than lighter weight for more reps, matching how
+// strength actually works.
+export function estimatedOneRepMax(weight: number, reps: number): number {
+  if (!weight || weight <= 0 || !reps || reps <= 0) return 0;
+  if (reps === 1) return weight;
+  if (reps > 12) {
+    // Epley drifts at high rep counts; cap the rep term it's built on.
+    return weight * (1 + 12 / 30);
+  }
+  return weight * (1 + reps / 30);
+}
+
+// For exercises flagged is_bodyweight (sit-ups, captain-chair leg raises...),
+// the "weight" you log is EXTRA load on top of your own bodyweight, not the
+// total load - so 0kg means "just my bodyweight", not "no load". This adds
+// your configured bodyweight back in so progress math reflects true load.
+export function effectiveWeight(
+  loggedWeight: number | null | undefined,
+  isBodyweight: boolean,
+  bodyweightKg: number | null
+): number {
+  const extra = loggedWeight ?? 0;
+  return isBodyweight ? (bodyweightKg ?? 0) + extra : extra;
+}

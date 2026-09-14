@@ -11,10 +11,19 @@ export function ExercisePicker({
 }: {
   exercises: ExerciseRow[];
   onSelect: (ex: ExerciseRow) => void;
-  onAddNew: (name: string) => void;
+  onAddNew: (name: string, isBodyweight: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
+  const [isBodyweight, setIsBodyweight] = useState(false);
+
+  const submit = () => {
+    if (!name.trim()) return;
+    onAddNew(name.trim(), isBodyweight);
+    setName("");
+    setIsBodyweight(false);
+    setAdding(false);
+  };
 
   return (
     <div className="space-y-2.5">
@@ -29,32 +38,36 @@ export function ExercisePicker({
       ))}
 
       {adding ? (
-        <div className="flex gap-2">
+        <div className="space-y-2.5 rounded-2xl border border-line bg-white p-3.5">
           <input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Exercise name"
-            className="h-12 flex-1 rounded-xl border border-line bg-white px-3.5 text-[15px] outline-none focus:border-ink"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) {
-                onAddNew(name.trim());
-                setName("");
-                setAdding(false);
-              }
-            }}
+            className="h-12 w-full rounded-xl border border-line bg-paper px-3.5 text-[15px] outline-none focus:border-ink"
+            onKeyDown={(e) => e.key === "Enter" && submit()}
           />
           <button
-            onClick={() => {
-              if (name.trim()) {
-                onAddNew(name.trim());
-                setName("");
-                setAdding(false);
-              }
-            }}
-            className="rounded-xl bg-ink px-4 text-sm font-semibold text-white"
+            onClick={() => setIsBodyweight((v) => !v)}
+            className="flex w-full items-center gap-2.5 rounded-xl bg-paper px-3.5 py-2.5 text-left"
           >
-            Add
+            <span
+              className={`flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
+                isBodyweight ? "bg-ink justify-end" : "bg-line justify-start"
+              }`}
+            >
+              <span className="h-4 w-4 rounded-full bg-white shadow-soft" />
+            </span>
+            <span className="text-[13px] text-ink-soft">
+              This is a bodyweight exercise - weight I log is{" "}
+              <span className="font-medium text-ink">extra</span> load, not the total
+            </span>
+          </button>
+          <button
+            onClick={submit}
+            className="w-full rounded-xl bg-ink py-2.5 text-sm font-semibold text-white"
+          >
+            Add exercise
           </button>
         </div>
       ) : (

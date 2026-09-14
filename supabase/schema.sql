@@ -51,6 +51,11 @@ create table if not exists exercises (
   body_part_id uuid not null references body_parts(id) on delete cascade,
   name text not null,
   is_custom boolean not null default false,
+  -- true for exercises where "weight" logged is EXTRA load on top of the
+  -- user's own bodyweight (e.g. sit-ups, captain-chair leg raises), rather
+  -- than the total load. Used so progress calculations can add the user's
+  -- bodyweight (see app_settings) back in instead of treating 0kg as "no load".
+  is_bodyweight boolean not null default false,
   -- for cardio machines only: which fields to prompt for
   cardio_fields text[], -- e.g. {'speed_kmh','distance_km','duration_min'} or {'steps','speed_level','duration_min'}
   created_at timestamptz not null default now(),
@@ -95,8 +100,8 @@ where body_parts.name = 'Shoulder'
 on conflict do nothing;
 
 -- Abs
-insert into exercises (body_part_id, name)
-select id, x.name from body_parts, unnest(array[
+insert into exercises (body_part_id, name, is_bodyweight)
+select id, x.name, true from body_parts, unnest(array[
   'Sit Up (Incline Bench)',
   'Sit Up (Incline Bench, Twist)',
   'Leg Raise (Captain Chair)'
@@ -212,6 +217,16 @@ join sessions s on s.id = se.session_id
 order by se.exercise_id, s.session_date desc, se.created_at desc;
 
 -- ---------------------------------------------------------------------------
+-- App settings = small key/value store. Currently used for one thing: your
+-- bodyweight, so bodyweight-flagged exercises can be scored correctly.
+-- ---------------------------------------------------------------------------
+create table if not exists app_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- MVP note: this app has no user accounts (see README). RLS is enabled with
 -- a permissive "anyone with the anon key can read/write" policy, which is
@@ -224,9 +239,13 @@ alter table exercises enable row level security;
 alter table sessions enable row level security;
 alter table session_exercises enable row level security;
 alter table exercise_sets enable row level security;
+alter table app_settings enable row level security;
 
 do $$
 begin
+  if not exists (select 1 from pg_policies where policyname = 'allow_all_app_settings') then
+    create policy allow_all_app_settings on app_settings for all using (true) with check (true);
+  end if;
   if not exists (select 1 from pg_policies where policyname = 'allow_all_locations') then
     create policy allow_all_locations on locations for all using (true) with check (true);
   end if;

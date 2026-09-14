@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, TrendingUp } from "lucide-react";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { Legend } from "@/components/calendar/Legend";
 import { DaySheet } from "@/components/calendar/DaySheet";
@@ -52,17 +52,26 @@ export function HomeClient({
 
   return (
     <div>
-      <header className="px-5 pb-2 pt-8">
-        <p className="text-sm font-medium text-ink-faint">
-          {new Date().toLocaleDateString("en-GB", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </p>
-        <h1 className="font-display text-[28px] font-semibold tracking-tight">
-          Your training
-        </h1>
+      <header className="flex items-start justify-between px-5 pb-2 pt-8">
+        <div>
+          <p className="text-sm font-medium text-ink-faint">
+            {new Date().toLocaleDateString("en-GB", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">
+            Your training
+          </h1>
+        </div>
+        <button
+          onClick={() => router.push("/analytics")}
+          className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-soft shadow-soft"
+          aria-label="Progress and personal records"
+        >
+          <TrendingUp size={17} />
+        </button>
       </header>
 
       <div className="px-5 pt-3">
