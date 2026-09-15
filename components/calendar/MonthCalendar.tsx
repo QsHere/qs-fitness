@@ -1,6 +1,7 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn, toDateKey } from "@/lib/utils";
 import type { CalendarDaySummary } from "@/lib/types";
@@ -10,6 +11,15 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+const gridVariants = {
+  enter: (direction: number) => ({ opacity: 0, x: direction > 0 ? 24 : -24 }),
+  center: { opacity: 1, x: 0 },
+  exit: (direction: number) => ({ opacity: 0, x: direction > 0 ? -24 : 24 }),
+};
+
+const SWIPE_DISTANCE_THRESHOLD = 45;
+const SWIPE_VELOCITY_THRESHOLD = 350;
 
 export function MonthCalendar({
   year,
@@ -26,6 +36,28 @@ export function MonthCalendar({
   onSelectDay: (dateKey: string) => void;
   selectedDate: string | null;
 }) {
+  const [direction, setDirection] = useState(0);
+
+  const navigate = (dir: -1 | 1) => {
+    setDirection(dir);
+    onNavigate(dir);
+  };
+
+  const handleDragEnd = (
+    _e: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const { offset, velocity } = info;
+    if (offset.x < -SWIPE_DISTANCE_THRESHOLD || velocity.x < -SWIPE_VELOCITY_THRESHOLD) {
+      navigate(1);
+    } else if (
+      offset.x > SWIPE_DISTANCE_THRESHOLD ||
+      velocity.x > SWIPE_VELOCITY_THRESHOLD
+    ) {
+      navigate(-1);
+    }
+  };
+
   const colorsByDate = new Map(days.map((d) => [d.date, d.bodyPartColors]));
   const firstOfMonth = new Date(year, month - 1, 1);
   const startWeekday = firstOfMonth.getDay();
@@ -47,14 +79,14 @@ export function MonthCalendar({
         </h2>
         <div className="flex gap-1">
           <button
-            onClick={() => onNavigate(-1)}
+            onClick={() => navigate(-1)}
             className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper"
             aria-label="Previous month"
           >
             <ChevronLeft size={18} />
           </button>
           <button
-            onClick={() => onNavigate(1)}
+            onClick={() => navigate(1)}
             className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper"
             aria-label="Next month"
           >
@@ -74,52 +106,67 @@ export function MonthCalendar({
         ))}
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={`${year}-${month}`}
-          initial={{ opacity: 0, x: 8 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -8 }}
-          transition={{ duration: 0.16 }}
-          className="grid grid-cols-7 gap-y-1.5"
-        >
-          {cells.map((dateKey, i) => {
-            if (!dateKey) return <div key={`empty-${i}`} />;
-            const colors = colorsByDate.get(dateKey) ?? [];
-            const isToday = dateKey === todayKey;
-            const isSelected = dateKey === selectedDate;
-            const dayNum = Number(dateKey.slice(-2));
+      {/* Drag wrapper never unmounts (unlike the swapped grid below), so the
+          swipe gesture stays responsive across month changes. dragElastic
+          with zero-width constraints is a rubber-band-only gesture detector:
+          nothing here waits on the network - onDragEnd fires and the slide
+          animation starts immediately, the data fetch just catches up. */}
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.6}
+        onDragEnd={handleDragEnd}
+        className="touch-pan-y"
+      >
+        <AnimatePresence mode="wait" custom={direction} initial={false}>
+          <motion.div
+            key={`${year}-${month}`}
+            custom={direction}
+            variants={gridVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.16, ease: "easeOut" }}
+            className="grid grid-cols-7 gap-y-1.5"
+          >
+            {cells.map((dateKey, i) => {
+              if (!dateKey) return <div key={`empty-${i}`} />;
+              const colors = colorsByDate.get(dateKey) ?? [];
+              const isToday = dateKey === todayKey;
+              const isSelected = dateKey === selectedDate;
+              const dayNum = Number(dateKey.slice(-2));
 
-            return (
-              <button
-                key={dateKey}
-                onClick={() => onSelectDay(dateKey)}
-                className="flex flex-col items-center gap-1 py-0.5"
-              >
-                <span
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-medium transition-colors",
-                    isSelected && "bg-ink text-white",
-                    !isSelected && isToday && "ring-1 ring-ink text-ink",
-                    !isSelected && !isToday && "text-ink"
-                  )}
+              return (
+                <button
+                  key={dateKey}
+                  onClick={() => onSelectDay(dateKey)}
+                  className="flex flex-col items-center gap-1 py-0.5"
                 >
-                  {dayNum}
-                </span>
-                <div className="flex h-1.5 items-center gap-0.5">
-                  {colors.slice(0, 3).map((c, idx) => (
-                    <span
-                      key={idx}
-                      className="h-1 w-1 rounded-full"
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </button>
-            );
-          })}
-        </motion.div>
-      </AnimatePresence>
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-medium transition-colors",
+                      isSelected && "bg-ink text-white",
+                      !isSelected && isToday && "ring-1 ring-ink text-ink",
+                      !isSelected && !isToday && "text-ink"
+                    )}
+                  >
+                    {dayNum}
+                  </span>
+                  <div className="flex h-1.5 items-center gap-0.5">
+                    {colors.slice(0, 3).map((c, idx) => (
+                      <span
+                        key={idx}
+                        className="h-1 w-1 rounded-full"
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 }

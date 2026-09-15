@@ -126,7 +126,6 @@ export interface CalendarDaySummary {
 
 export interface OverviewStats {
   allTime: number;
-  thisMonth: number;
   thisWeek: number;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp } from "lucide-react";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
@@ -13,12 +13,14 @@ export function HomeClient({
   initialYear,
   initialMonth,
   initialDays,
+  initialMonthSessionsCount,
   overviewStats,
   bodyParts,
 }: {
   initialYear: number;
   initialMonth: number;
   initialDays: CalendarDaySummary[];
+  initialMonthSessionsCount: number;
   overviewStats: OverviewStats;
   bodyParts: BodyPartRow[];
 }) {
@@ -26,12 +28,14 @@ export function HomeClient({
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
   const [days, setDays] = useState(initialDays);
+  const [monthSessionsCount, setMonthSessionsCount] = useState(initialMonthSessionsCount);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const requestToken = useRef(0);
 
-  // Note: overviewStats (all-time / this-month / this-week) intentionally
-  // does NOT change when browsing other months below - it always reflects
-  // real "today", regardless of which month the calendar is showing.
+  // "This month" follows whichever month the calendar is showing (updates
+  // on every navigate below). "All time" and "this week" intentionally stay
+  // fixed to real today regardless of what's being browsed.
   const navigate = (direction: -1 | 1) => {
     let newMonth = month + direction;
     let newYear = year;
@@ -44,9 +48,15 @@ export function HomeClient({
     }
     setMonth(newMonth);
     setYear(newYear);
+    const token = ++requestToken.current;
     startTransition(async () => {
       const result = await getMonthCalendar(newYear, newMonth);
+      // A faster swipe/click after this one may have already resolved and
+      // moved us further along - if so, this now-stale response should not
+      // overwrite the newer month's data.
+      if (token !== requestToken.current) return;
       setDays(result.days);
+      setMonthSessionsCount(result.sessionsCount);
     });
   };
 
@@ -89,7 +99,7 @@ export function HomeClient({
 
       <div className="grid grid-cols-3 gap-3 px-5 pt-3">
         <StatCard label="All time" value={overviewStats.allTime} />
-        <StatCard label="This month" value={overviewStats.thisMonth} />
+        <StatCard label="This month" value={monthSessionsCount} />
         <StatCard label="This week" value={overviewStats.thisWeek} />
       </div>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { BodyweightBanner } from "@/components/analytics/BodyweightBanner";
 import { CardioCard, PRCard } from "@/components/analytics/PRCard";
+import { CollapsibleSection } from "@/components/analytics/CollapsibleSection";
 import { ExerciseDetailSheet, type DetailTarget } from "@/components/analytics/ExerciseDetailSheet";
 import type { CardioSummary, ExercisePRSummary } from "@/lib/types";
 
@@ -62,9 +63,13 @@ export function AnalyticsClient({
           </p>
         )}
 
-        {grouped.map((group) => (
-          <section key={group.name} className="space-y-2.5">
-            <h2 className="text-[13px] font-semibold text-ink-faint">{group.name}</h2>
+        {grouped.map((group, i) => (
+          <CollapsibleSection
+            key={group.name}
+            title={group.name}
+            count={group.items.length}
+            defaultOpen={i === 0}
+          >
             {group.items.map((pr) => (
               <PRCard
                 key={pr.exercise_id}
@@ -79,12 +84,15 @@ export function AnalyticsClient({
                 }
               />
             ))}
-          </section>
+          </CollapsibleSection>
         ))}
 
         {cardio.length > 0 && (
-          <section className="space-y-2.5">
-            <h2 className="text-[13px] font-semibold text-ink-faint">Cardio</h2>
+          <CollapsibleSection
+            title="Cardio"
+            count={cardio.length}
+            defaultOpen={grouped.length === 0}
+          >
             {cardio.map((c) => (
               <CardioCard
                 key={c.exercise_id}
@@ -99,7 +107,7 @@ export function AnalyticsClient({
                 }
               />
             ))}
-          </section>
+          </CollapsibleSection>
         )}
       </div>
 

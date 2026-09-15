@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { calendarColorForBodyPart } from "@/lib/constants";
-import { toDateKey, estimatedOneRepMax, effectiveWeight } from "@/lib/utils";
+import { estimatedOneRepMax, effectiveWeight } from "@/lib/utils";
 import type {
   BodyPartRow,
   CalendarDaySummary,
@@ -134,7 +134,7 @@ export async function getLastExerciseRecord(exerciseId: string) {
 export async function getMonthCalendar(
   year: number,
   month: number // 1-12
-): Promise<{ days: CalendarDaySummary[] }> {
+): Promise<{ days: CalendarDaySummary[]; sessionsCount: number }> {
   const supabase = createClient();
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = new Date(year, month, 0).getDate();
@@ -179,40 +179,54 @@ export async function getMonthCalendar(
     ([date, colors]) => ({ date, bodyPartColors: Array.from(colors) })
   );
 
-  return { days };
+  return { days, sessionsCount: sessionIds.length };
 }
 
 // ---------------------------------------------------------------------------
-// Overview stats - always reflect real "today", independent of whatever
-// month the calendar above happens to be scrolled to.
+// Overview stats
+//
+// "All time" and "this week" always reflect real today, independent of
+// whatever month the calendar is scrolled to - "this month" instead comes
+// from getMonthCalendar above, since it's meant to track the month you're
+// currently looking at.
+//
+// Date math here is anchored to a fixed timezone rather than server local
+// time: Vercel's serverless functions run in UTC, so "today"/"this Monday"
+// computed from a bare `new Date()` would be wrong for roughly the first 8
+// hours of every Malaysia day (UTC+8) - e.g. a session logged at 1am on a
+// Monday would still read as "last week" server-side, even though it's
+// already Monday locally. Update APP_TIMEZONE if you're ever not in MY/SG.
 // ---------------------------------------------------------------------------
+
+const APP_TIMEZONE = "Asia/Kuala_Lumpur";
+
+function todayKeyInAppTimezone(): string {
+  // en-CA locale formats as YYYY-MM-DD, which is exactly what session_date
+  // comparisons need - no manual string assembly required.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(
+    new Date()
+  );
+}
 
 function mondayOfThisWeek(): string {
-  const now = new Date();
-  const day = (now.getDay() + 6) % 7; // Mon=0..Sun=6
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - day);
-  return toDateKey(monday);
-}
-
-function firstOfThisMonth(): string {
-  const now = new Date();
-  return toDateKey(new Date(now.getFullYear(), now.getMonth(), 1));
+  const [y, m, d] = todayKeyInAppTimezone().split("-").map(Number);
+  // UTC-anchored on purpose: this is pure calendar-date arithmetic on a
+  // Y/M/D triple that's already been resolved to the right timezone above,
+  // so there's no DST/local-offset shift to worry about here.
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const day = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  date.setUTCDate(date.getUTCDate() - day);
+  return date.toISOString().slice(0, 10);
 }
 
 export async function getOverviewStats(): Promise<{
   allTime: number;
-  thisMonth: number;
   thisWeek: number;
 }> {
   const supabase = createClient();
 
-  const [allTimeRes, monthRes, weekRes] = await Promise.all([
+  const [allTimeRes, weekRes] = await Promise.all([
     supabase.from("sessions").select("id", { count: "exact", head: true }),
-    supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .gte("session_date", firstOfThisMonth()),
     supabase
       .from("sessions")
       .select("id", { count: "exact", head: true })
@@ -220,12 +234,10 @@ export async function getOverviewStats(): Promise<{
   ]);
 
   if (allTimeRes.error) throw allTimeRes.error;
-  if (monthRes.error) throw monthRes.error;
   if (weekRes.error) throw weekRes.error;
 
   return {
     allTime: allTimeRes.count ?? 0,
-    thisMonth: monthRes.count ?? 0,
     thisWeek: weekRes.count ?? 0,
   };
 }

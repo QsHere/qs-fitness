@@ -68,6 +68,13 @@ If you've already run `supabase/schema.sql` once on a live project, don't re-run
 
 ## Changes in this update
 
+**Latest:**
+- "This month" on the home screen now follows whichever month the calendar is showing (swipe or arrows) instead of always meaning the real current month. "All time" and "this week" stay fixed to today regardless of what you're browsing.
+- Fixed the week boundary: it was computing "today" from the server's clock, which runs in UTC on Vercel - so for roughly the first 8 hours of every Malaysia day (until UTC catches up), it would still think it was the previous day, occasionally making "this week" look like it hadn't reset yet on a Monday morning. Date math for these stats is now anchored to `Asia/Kuala_Lumpur` explicitly (see `APP_TIMEZONE` in `lib/actions.ts`).
+- The calendar now supports swipe left/right to change months, not just the arrow buttons. It's a pure client-side gesture (no network wait before the animation starts), and rapid swipes are guarded against a race condition where an older month's data could arrive after a newer one and overwrite it.
+- The Progress & PRs page's body-part sections are now collapsible (tap the header) instead of one long list - the most-trained section opens by default, the rest start collapsed.
+
+**Earlier:**
 - Removed the passcode gate entirely (deleted `middleware.ts`, `app/unlock/`, `app/api/unlock/`) - per your request, ship it open for now.
 - Added a real app icon + `public/manifest.json`, generated from your logo, so Chrome can offer a proper Install rather than only a shortcut.
 - Fixed the day-detail sheet not scrolling: the drag-to-dismiss gesture was capturing the same touch movement as scrolling. Dragging is now confined to the little handle bar at the top; the list below scrolls independently.

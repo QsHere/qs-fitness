@@ -8,7 +8,7 @@ export default async function Home() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  const [{ days }, bodyParts, overviewStats] = await Promise.all([
+  const [{ days, sessionsCount }, bodyParts, overviewStats] = await Promise.all([
     getMonthCalendar(year, month),
     getBodyParts(),
     getOverviewStats(),
@@ -19,6 +19,7 @@ export default async function Home() {
       initialYear={year}
       initialMonth={month}
       initialDays={days}
+      initialMonthSessionsCount={sessionsCount}
       overviewStats={overviewStats}
       bodyParts={bodyParts}
     />
