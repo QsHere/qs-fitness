@@ -57,10 +57,16 @@ export function PRCard({
         )}
       </div>
       <div className="mt-2.5 flex items-end justify-between">
-        <p className="font-display text-[22px] font-semibold tracking-tight text-ink">
-          {pr.bestValue}
-          <span className="ml-1 text-sm font-medium text-ink-faint">{pr.bestUnit}</span>
-        </p>
+        <div>
+          <p className="font-display text-[22px] font-semibold tracking-tight text-ink">
+            {pr.bestSetLabel}
+          </p>
+          {pr.usesEstimatedOneRepMax && (
+            <p className="mt-0.5 text-[11px] text-ink-faint">
+              ≈ {pr.bestValue} kg est. 1RM
+            </p>
+          )}
+        </div>
         <TrendBadge delta={pr.trendDelta} unit={pr.bestUnit} />
       </div>
     </button>
