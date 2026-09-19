@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { TimerProvider } from "@/lib/timer/TimerContext";
+import { TimerFab } from "@/components/timer/TimerFab";
 
 const sans = Inter({
   subsets: ["latin"],
@@ -50,7 +52,10 @@ export default function RootLayout({
     <html lang="en" className={`${sans.variable} ${display.variable}`}>
       <body className="font-sans antialiased">
         <div className="mx-auto min-h-dvh w-full max-w-md bg-paper pb-28">
-          {children}
+          <TimerProvider>
+            {children}
+            <TimerFab />
+          </TimerProvider>
         </div>
       </body>
     </html>

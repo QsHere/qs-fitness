@@ -85,6 +85,19 @@ If you've already run `supabase/schema.sql` once on a live project, don't re-run
 - Replaced the body-part tile icons with emoji that actually match: 🏋️ Chest, 🧗 Back, 🙆 Shoulder, 🔥 Abs, 💪 Arm, ❤️‍🔥 Cardio, 🦵 Lower Body.
 - Added error boundaries (`app/error.tsx`, `app/log/error.tsx`) and `export const dynamic = "force-dynamic"` on the data-loading pages. This won't eliminate every possible transient Supabase hiccup, but it means a server-side error now shows a "Try again" button in-app instead of a hard crash that only a manual refresh could fix - and removing the static/cached rendering path removes one likely source of that class of error.
 
+## Rest Timer
+
+A small floating button (bottom-right, on every page) starts a rest timer without leaving whatever you're doing - tap it while logging a set, pick 1:00 / 1:30 / 2:00 or a custom time, and it keeps counting down as a live pill wherever you navigate in the app.
+
+**Honest limits, since this matters for a rest timer specifically:** web browsers deliberately restrict what a backgrounded tab can do (battery saving), and there's no way for a web app to override that - only a native app gets guaranteed background execution. What's built in to get as close as realistically possible:
+
+- The countdown is computed from an absolute end-timestamp, not a decrementing counter - so even if the browser throttles or briefly suspends it while you're in another app, the instant it gets CPU time again it shows the *exactly correct* remaining time rather than a drifted one.
+- A near-silent looping tone plays while a timer is running - the same trick music/podcast apps use to stop the browser from fully suspending the tab in the background. It's best-effort (Android Chrome respects this more reliably than iOS Safari), not a guarantee.
+- A real system notification fires via a tiny service worker (`public/sw.js`) when the timer completes, as a second channel alongside the in-page sound/vibration - useful if you've switched apps and might not hear the tab.
+- Timer state is saved to local storage, so even if the OS fully reclaims the tab's memory while you're away (a harsher scenario than just switching apps), reopening it recovers the correct remaining time instead of losing the timer.
+
+Realistic expectation: for a 1-2 minute rest, switching to one other app and back on Android Chrome should work well. Locking the phone screen or leaving it backgrounded for a long time increases the chance the alert arrives late (the moment you return) rather than exactly on time - this is a platform restriction, not a bug to report.
+
 ## Progress & PRs
 
 Tap the trend icon on the home screen to open `/analytics`. This is deliberately **not** scored by volume (weight x reps) - two things you flagged make that unreliable:
