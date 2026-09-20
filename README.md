@@ -69,6 +69,12 @@ If you've already run `supabase/schema.sql` once on a live project, don't re-run
 ## Changes in this update
 
 **Latest:**
+- The rest timer button can now be moved: hold it down (not just tap) to drag it anywhere on screen, so it stops covering the home stats. Position is remembered.
+- Fixed losing your in-progress log session when navigating to Progress & PRs mid-workout and back. The draft (date, gym, every exercise added so far) now persists to local storage continuously while you're logging, and restores automatically the moment you land back on `/log` - regardless of how you got there. Also added a direct shortcut to Progress & PRs right in the logging screen's top bar, so you don't need to back out to Home first.
+- The day-detail sheet (tapping a calendar date) now groups exercises by body part into collapsible sections, all collapsed by default - so opening a date shows which parts you trained at a glance from the section headers alone, and you expand only the ones you want full detail on.
+- Progress & PRs sections now start fully collapsed (previously the first one opened automatically), and follow a fixed order: Chest, Back, Shoulder, Arm, Abs, Cardio, Lower Body.
+
+**Earlier:**
 - "This month" on the home screen now follows whichever month the calendar is showing (swipe or arrows) instead of always meaning the real current month. "All time" and "this week" stay fixed to today regardless of what you're browsing.
 - Fixed the week boundary: it was computing "today" from the server's clock, which runs in UTC on Vercel - so for roughly the first 8 hours of every Malaysia day (until UTC catches up), it would still think it was the previous day, occasionally making "this week" look like it hadn't reset yet on a Monday morning. Date math for these stats is now anchored to `Asia/Kuala_Lumpur` explicitly (see `APP_TIMEZONE` in `lib/actions.ts`).
 - The calendar now supports swipe left/right to change months, not just the arrow buttons. It's a pure client-side gesture (no network wait before the animation starts), and rapid swipes are guarded against a race condition where an older month's data could arrive after a newer one and overwrite it.

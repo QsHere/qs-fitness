@@ -539,15 +539,36 @@ export async function getBodyweightKg(): Promise<number | null> {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function setBodyweightKg(kg: number) {
+// Same data as above, plus when it was last set - used only by the UI to
+// show "updated 19 Sep" next to the bodyweight. Kept separate from
+// getBodyweightKg so the internal scoring calculations above don't need to
+// change shape.
+export async function getBodyweightSetting(): Promise<
+  { kg: number; updatedAt: string } | null
+> {
   const supabase = createClient();
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value, updated_at")
+    .eq("key", "bodyweight_kg")
+    .maybeSingle();
+  if (!data) return null;
+  const n = Number(data.value);
+  if (!Number.isFinite(n)) return null;
+  return { kg: n, updatedAt: data.updated_at };
+}
+
+export async function setBodyweightKg(kg: number): Promise<{ updatedAt: string }> {
+  const supabase = createClient();
+  const updatedAt = new Date().toISOString();
   const { error } = await supabase.from("app_settings").upsert({
     key: "bodyweight_kg",
     value: String(kg),
-    updated_at: new Date().toISOString(),
+    updated_at: updatedAt,
   });
   if (error) throw error;
   revalidatePath("/analytics");
+  return { updatedAt };
 }
 
 // ---------------------------------------------------------------------------

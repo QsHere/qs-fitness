@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Check, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Trash2, TrendingUp, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { BodyPartGrid } from "@/components/logger/BodyPartGrid";
@@ -28,6 +28,54 @@ import type {
 
 const NEW_PART_PALETTE = ["#FF8A5B", "#5B7CFA", "#F2C94C", "#5BC0A8", "#C084FC"];
 const HISTORY_KEY = "qsfDepth";
+const DRAFT_KEY = "qsf_log_draft";
+
+interface StoredDraft {
+  dateKey: string;
+  locationId: string;
+  sessionNotes: string;
+  blocks: ExerciseBlockDraft[];
+}
+
+// Reading this happens once, synchronously, during the very first render (not
+// an effect) - so a restored draft can seed useState's initial values
+// directly and jump straight to the right step with no flash of a blank
+// "New workout" screen first. This is exactly what lets you leave mid-log
+// (e.g. to check Progress & PRs) and come back with everything intact,
+// whether you left via a route change or the app being backgrounded.
+function loadDraft(addMode: boolean): StoredDraft | null {
+  if (addMode) return null; // adding to an existing session has its own URL-scoped context
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as StoredDraft;
+    if (!draft || !Array.isArray(draft.blocks) || draft.blocks.length === 0) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(draft: StoredDraft) {
+  try {
+    if (draft.blocks.length === 0) {
+      window.localStorage.removeItem(DRAFT_KEY);
+    } else {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }
+  } catch {
+    // ignore - draft just won't survive leaving the page this time
+  }
+}
+
+function clearDraft() {
+  try {
+    window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 type Step =
   | { name: "setup" }
@@ -56,16 +104,25 @@ export function LogFlow({
   const sessionParam = params.get("session");
   const addMode = !!sessionParam;
 
+  const draftRef = useRef<StoredDraft | null | undefined>(undefined);
+  if (draftRef.current === undefined) {
+    draftRef.current = loadDraft(addMode);
+  }
+  const restoredDraft = draftRef.current;
+
   const [bodyParts, setBodyParts] = useState(initialBodyParts);
-  const [dateKey, setDateKey] = useState(dateParam ?? toDateKey(new Date()));
+  const [dateKey, setDateKey] = useState(
+    restoredDraft?.dateKey ?? dateParam ?? toDateKey(new Date())
+  );
   const [locationId, setLocationId] = useState(
-    locationParam ??
+    restoredDraft?.locationId ??
+      locationParam ??
       locations.find((l) => l.is_default)?.id ??
       locations[0]?.id ??
       ""
   );
-  const [blocks, setBlocks] = useState<ExerciseBlockDraft[]>([]);
-  const [sessionNotes, setSessionNotes] = useState("");
+  const [blocks, setBlocks] = useState<ExerciseBlockDraft[]>(restoredDraft?.blocks ?? []);
+  const [sessionNotes, setSessionNotes] = useState(restoredDraft?.sessionNotes ?? "");
   const [exercises, setExercises] = useState<ExerciseRow[]>([]);
   const [draftSets, setDraftSets] = useState<SetDraft[]>([{ set_number: 1 }]);
   const [draftNotes, setDraftNotes] = useState("");
@@ -82,10 +139,19 @@ export function LogFlow({
   // can no longer disagree about how many steps deep you are, and the
   // `blocks` you've already added never get wiped by navigating back,
   // because the component never unmounts while depth > 0.
-  const initialStep: Step = addMode ? { name: "pickBodyPart" } : { name: "setup" };
+  const initialStep: Step =
+    restoredDraft || addMode ? { name: "pickBodyPart" } : { name: "setup" };
   const stackRef = useRef<Step[]>([initialStep]);
   const [depth, setDepth] = useState(0);
   const step = stackRef.current[depth];
+
+  // Keep the draft in sync with every change, so leaving this page - by any
+  // route, including a full unmount/remount via navigation - never loses
+  // progress. Cleared explicitly on a successful save (see handleSave).
+  useEffect(() => {
+    if (addMode) return;
+    saveDraft({ dateKey, locationId, sessionNotes, blocks });
+  }, [addMode, dateKey, locationId, sessionNotes, blocks]);
 
   useEffect(() => {
     window.history.replaceState({ [HISTORY_KEY]: 0 }, "");
@@ -237,6 +303,7 @@ export function LogFlow({
         }
       } else {
         await saveSession({ dateKey, locationId, sessionNotes, blocks });
+        clearDraft();
       }
       setSuccess(true);
       setTimeout(() => router.push("/"), 1100);
@@ -259,14 +326,25 @@ export function LogFlow({
         >
           {depth === 0 ? <X size={17} /> : <ArrowLeft size={17} />}
         </button>
-        {blocks.length > 0 && step.name !== "review" && !success && (
-          <button
-            onClick={() => pushStep({ name: "review" })}
-            className="text-sm font-semibold text-ink"
-          >
-            Review ({blocks.length})
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {!success && (
+            <button
+              onClick={() => router.push("/analytics")}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-ink-soft shadow-soft"
+              aria-label="Progress and personal records"
+            >
+              <TrendingUp size={16} />
+            </button>
+          )}
+          {blocks.length > 0 && step.name !== "review" && !success && (
+            <button
+              onClick={() => pushStep({ name: "review" })}
+              className="text-sm font-semibold text-ink"
+            >
+              Review ({blocks.length})
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 px-5 pb-10 pt-5">

@@ -4,12 +4,22 @@ import { useState, useTransition } from "react";
 import { Check, Info } from "lucide-react";
 import { setBodyweightKg } from "@/lib/actions";
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export function BodyweightBanner({
   currentKg,
+  updatedAt,
   onSaved,
 }: {
   currentKg: number | null;
-  onSaved: (kg: number) => void;
+  updatedAt: string | null;
+  onSaved: (kg: number, updatedAt: string) => void;
 }) {
   const [editing, setEditing] = useState(currentKg == null);
   const [value, setValue] = useState(currentKg ? String(currentKg) : "");
@@ -19,8 +29,8 @@ export function BodyweightBanner({
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return;
     startTransition(async () => {
-      await setBodyweightKg(n);
-      onSaved(n);
+      const { updatedAt } = await setBodyweightKg(n);
+      onSaved(n, updatedAt);
       setEditing(false);
     });
   };
@@ -33,6 +43,9 @@ export function BodyweightBanner({
       >
         <span className="text-sm text-ink-soft">
           Bodyweight: <span className="font-semibold text-ink">{currentKg} kg</span>
+          {updatedAt && (
+            <span className="text-ink-faint"> · updated {formatDate(updatedAt)}</span>
+          )}
         </span>
         <span className="text-xs font-medium text-ink-faint">Edit</span>
       </button>

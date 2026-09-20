@@ -29,3 +29,23 @@ export const CALENDAR_LEGEND = [
   { label: "Lower body", color: CALENDAR_LOWER_COLOR },
   { label: "Cardio", color: CALENDAR_OTHER_COLOR },
 ];
+
+// Display order for body-part sections on the Progress & PRs page and the
+// day-detail sheet. Deliberately not the same as body_parts.sort_order in
+// the database (that has Abs before Arm) - this is purely a UI ordering
+// preference. Anything not in this list (custom body parts) sorts after,
+// alphabetically.
+export const BODY_PART_DISPLAY_ORDER = [
+  "Chest",
+  "Back",
+  "Shoulder",
+  "Arm",
+  "Abs",
+  "Cardio",
+  "Lower Body",
+];
+
+export function bodyPartSortIndex(name: string): number {
+  const i = BODY_PART_DISPLAY_ORDER.indexOf(name);
+  return i === -1 ? 999 : i;
+}
