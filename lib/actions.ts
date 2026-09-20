@@ -99,19 +99,35 @@ export async function addCustomExercise(
 
 export async function getLastExerciseRecord(exerciseId: string) {
   const supabase = createClient();
-  // Ordered by the session's actual date, not by when the row was inserted -
-  // otherwise backfilling an older date after already logging a more recent
-  // one would incorrectly surface the backfilled entry as "last time".
-  const { data: lastBlock } = await supabase
+  // Fetch every time this exercise has been logged, then sort in code by the
+  // session's actual date (not insertion/update time). This intentionally
+  // avoids relying on PostgREST's order-by-related-table behaviour: that
+  // feature is documented and reliable for one-to-many embeds (reordering a
+  // nested array), but session_exercises -> sessions is many-to-one, and
+  // whether that reliably reorders the *top-level* rows rather than being a
+  // no-op is genuinely ambiguous - not worth trusting for something this
+  // important to get right. A personal tracker's history for one exercise is
+  // small (tens to low hundreds of rows at most), so sorting in code here
+  // costs nothing and removes the ambiguity entirely.
+  const { data: blocks, error } = await supabase
     .from("session_exercises")
-    .select("id, notes, sessions!inner(session_date)")
-    .eq("exercise_id", exerciseId)
-    .order("session_date", { referencedTable: "sessions", ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .select("id, notes, created_at, sessions!inner(session_date)")
+    .eq("exercise_id", exerciseId);
+  if (error) throw error;
+  if (!blocks || blocks.length === 0) return null;
 
-  if (!lastBlock) return null;
+  type BlockRow = {
+    id: string;
+    notes: string | null;
+    created_at: string;
+    sessions: { session_date: string };
+  };
+  const sorted = (blocks as unknown as BlockRow[]).slice().sort((a, b) => {
+    const dateDiff = b.sessions.session_date.localeCompare(a.sessions.session_date);
+    if (dateDiff !== 0) return dateDiff;
+    return b.created_at.localeCompare(a.created_at);
+  });
+  const lastBlock = sorted[0];
 
   const { data: sets } = await supabase
     .from("exercise_sets")
@@ -120,8 +136,7 @@ export async function getLastExerciseRecord(exerciseId: string) {
     .order("set_number");
 
   return {
-    date: (lastBlock as unknown as { sessions: { session_date: string } })
-      .sessions?.session_date,
+    date: lastBlock.sessions.session_date,
     notes: lastBlock.notes,
     sets: sets ?? [],
   };
