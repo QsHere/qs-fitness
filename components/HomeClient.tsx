@@ -1,12 +1,18 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, TrendingUp } from "lucide-react";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { Legend } from "@/components/calendar/Legend";
 import { DaySheet } from "@/components/calendar/DaySheet";
 import { getMonthCalendar } from "@/lib/actions";
+import {
+  getCachedMonth,
+  prefetchDayDetails,
+  prefetchNeighborMonths,
+  setCachedMonth,
+} from "@/lib/clientCache";
 import type { BodyPartRow, CalendarDaySummary, OverviewStats } from "@/lib/types";
 
 export function HomeClient({
@@ -30,8 +36,23 @@ export function HomeClient({
   const [days, setDays] = useState(initialDays);
   const [monthSessionsCount, setMonthSessionsCount] = useState(initialMonthSessionsCount);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [isMonthPending, startTransition] = useTransition();
   const requestToken = useRef(0);
+
+  // The initial month was already fetched server-side for first paint -
+  // seed the cache with it and warm up neighbours + this month's day
+  // details in the background, so the very first swipe and the very first
+  // date tap both have a real shot at being instant rather than waiting on
+  // a fresh round trip every time.
+  useEffect(() => {
+    setCachedMonth(initialYear, initialMonth, {
+      days: initialDays,
+      sessionsCount: initialMonthSessionsCount,
+    });
+    prefetchNeighborMonths(initialYear, initialMonth);
+    prefetchDayDetails(initialDays.map((d) => d.date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "This month" follows whichever month the calendar is showing (updates
   // on every navigate below). "All time" and "this week" intentionally stay
@@ -48,6 +69,18 @@ export function HomeClient({
     }
     setMonth(newMonth);
     setYear(newYear);
+
+    const cached = getCachedMonth(newYear, newMonth);
+    if (cached) {
+      // No network wait at all - this is what makes repeat swiping across
+      // the same handful of months feel instant instead of laggy.
+      setDays(cached.days);
+      setMonthSessionsCount(cached.sessionsCount);
+      prefetchNeighborMonths(newYear, newMonth);
+      prefetchDayDetails(cached.days.map((d) => d.date));
+      return;
+    }
+
     const token = ++requestToken.current;
     startTransition(async () => {
       const result = await getMonthCalendar(newYear, newMonth);
@@ -57,6 +90,9 @@ export function HomeClient({
       if (token !== requestToken.current) return;
       setDays(result.days);
       setMonthSessionsCount(result.sessionsCount);
+      setCachedMonth(newYear, newMonth, result);
+      prefetchNeighborMonths(newYear, newMonth);
+      prefetchDayDetails(result.days.map((d) => d.date));
     });
   };
 
@@ -99,7 +135,7 @@ export function HomeClient({
 
       <div className="grid grid-cols-3 gap-3 px-5 pt-3">
         <StatCard label="All time" value={overviewStats.allTime} />
-        <StatCard label="This month" value={monthSessionsCount} />
+        <StatCard label="This month" value={monthSessionsCount} loading={isMonthPending} />
         <StatCard label="This week" value={overviewStats.thisWeek} />
       </div>
 
@@ -117,10 +153,22 @@ export function HomeClient({
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  label,
+  value,
+  loading,
+}: {
+  label: string;
+  value: number;
+  loading?: boolean;
+}) {
   return (
     <div className="rounded-2xl bg-white p-4 text-center shadow-soft">
-      <p className="font-display text-2xl font-semibold tracking-tight">
+      <p
+        className={`font-display text-2xl font-semibold tracking-tight transition-opacity ${
+          loading ? "opacity-40" : "opacity-100"
+        }`}
+      >
         {value}
       </p>
       <p className="mt-0.5 text-[11px] font-medium text-ink-faint">{label}</p>

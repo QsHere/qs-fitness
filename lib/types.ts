@@ -148,10 +148,17 @@ export interface ExercisePRSummary {
   sessionsCount: number;
 }
 
+export interface ExerciseHistorySet {
+  weight: number | null;
+  reps: number | null;
+}
+
 export interface ExerciseHistoryPoint {
   session_date: string;
   value: number;
   setLabel: string;
+  allSets: ExerciseHistorySet[];
+  bestSetIndex: number;
   isAllTimeBestSoFar: boolean;
 }
 

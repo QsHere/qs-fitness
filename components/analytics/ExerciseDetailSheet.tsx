@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ExerciseTrendChart, type ChartPoint } from "@/components/analytics/ExerciseTrendChart";
 import { getCardioHistory, getExerciseHistory } from "@/lib/actions";
-import { formatFriendlyDate } from "@/lib/utils";
+import { cn, formatFriendlyDate } from "@/lib/utils";
 import type { CardioHistoryPoint, ExerciseHistoryResult } from "@/lib/types";
 
 export interface DetailTarget {
@@ -98,20 +98,41 @@ export function ExerciseDetailSheet({
               unit={strength.unit}
             />
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <p className="text-[11px] font-medium text-ink-faint">Recent sessions</p>
               {[...strength.points]
                 .reverse()
                 .slice(0, 6)
                 .map((p) => (
-                  <div
-                    key={p.session_date}
-                    className="flex items-center justify-between rounded-xl bg-paper px-3 py-2"
-                  >
-                    <span className="text-[13px] text-ink-soft">
-                      {formatFriendlyDate(p.session_date)}
-                    </span>
-                    <span className="text-[13px] font-medium text-ink">{p.setLabel}</span>
+                  <div key={p.session_date} className="rounded-xl bg-paper px-3 py-2.5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-[12px] font-medium text-ink-faint">
+                        {formatFriendlyDate(p.session_date)}
+                      </span>
+                      {p.isAllTimeBestSoFar && (
+                        <span className="text-[10px] font-bold text-emerald-600">PR</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.allSets.map((s, i) => {
+                        const chipLabel = strength.usesEstimatedOneRepMax
+                          ? `${s.weight ?? 0}×${s.reps ?? 0}`
+                          : `${s.reps ?? 0} reps`;
+                        const isBest = i === p.bestSetIndex;
+                        return (
+                          <span
+                            key={i}
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-[12px] font-semibold",
+                              isBest ? "text-white" : "bg-white text-ink-soft"
+                            )}
+                            style={isBest ? { backgroundColor: strength.color_hex } : undefined}
+                          >
+                            {chipLabel}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
             </div>

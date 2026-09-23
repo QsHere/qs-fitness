@@ -14,6 +14,7 @@ import {
   updateSessionExercise,
   updateSessionNotes,
 } from "@/lib/actions";
+import { getCachedDayDetail, setCachedDayDetail } from "@/lib/clientCache";
 import { formatFriendlyDate, setVolume } from "@/lib/utils";
 import type { DayExerciseDetail, DaySessionDetail, SetDraft } from "@/lib/types";
 
@@ -37,11 +38,26 @@ export function DaySheet({
       setEditingId(null);
       return;
     }
-    getDayDetail(dateKey).then(setSessions);
+    const cached = getCachedDayDetail(dateKey);
+    if (cached) {
+      // Show the cached version immediately (no loading flash), then quietly
+      // refresh in the background in case it's changed since it was cached.
+      setSessions(cached);
+    } else {
+      setSessions(null);
+    }
+    getDayDetail(dateKey).then((result) => {
+      setCachedDayDetail(dateKey, result);
+      setSessions(result);
+    });
   }, [dateKey]);
 
   const refresh = () => {
-    if (dateKey) getDayDetail(dateKey).then(setSessions);
+    if (!dateKey) return;
+    getDayDetail(dateKey).then((result) => {
+      setCachedDayDetail(dateKey, result);
+      setSessions(result);
+    });
   };
 
   const startEdit = (sessionExerciseId: string, sets: SetDraft[], notes: string) => {

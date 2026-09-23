@@ -599,6 +599,7 @@ export async function setBodyweightKg(kg: number): Promise<{ updatedAt: string }
 type RawSetRow = {
   weight: number | null;
   reps: number | null;
+  set_number?: number;
 };
 
 type RawBlockRow = {
@@ -718,7 +719,7 @@ export async function getExerciseHistory(
 
   const { data: blocks, error: blocksError } = await supabase
     .from("session_exercises")
-    .select("sessions!inner(session_date), exercise_sets(weight, reps)")
+    .select("sessions!inner(session_date), exercise_sets(weight, reps, set_number)")
     .eq("exercise_id", exerciseId);
   if (blocksError) throw blocksError;
 
@@ -731,9 +732,14 @@ export async function getExerciseHistory(
 
   let runningBest = 0;
   const points: ExerciseHistoryPoint[] = entries.map((entry) => {
+    const orderedSets = entry.sets
+      .slice()
+      .sort((a, b) => (a.set_number ?? 0) - (b.set_number ?? 0));
+
     let value = 0;
     let label = "";
-    for (const s of entry.sets) {
+    let bestIdx = -1;
+    orderedSets.forEach((s, i) => {
       let v: number;
       let l: string;
       if (usesEstimatedOneRepMax) {
@@ -747,14 +753,17 @@ export async function getExerciseHistory(
       if (v > value) {
         value = v;
         label = l;
+        bestIdx = i;
       }
-    }
+    });
     const isAllTimeBestSoFar = value >= runningBest && value > 0;
     if (value > runningBest) runningBest = value;
     return {
       session_date: entry.date,
       value: Math.round(value * 10) / 10,
       setLabel: label,
+      allSets: orderedSets.map((s) => ({ weight: s.weight, reps: s.reps })),
+      bestSetIndex: bestIdx,
       isAllTimeBestSoFar,
     };
   });
