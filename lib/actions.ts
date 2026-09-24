@@ -265,78 +265,76 @@ export async function getDayDetail(
   dateKey: string
 ): Promise<DaySessionDetail[]> {
   const supabase = createClient();
+
+  // One query for everything, via nested embeds, instead of the previous
+  // "1 query per exercise" pattern - that was the actual cause of the
+  // slowdown, not a lack of caching: a day with 5 exercises was issuing 7
+  // sequential round trips, and prefetching several such days at once could
+  // pile up dozens of concurrent requests against Supabase's connection
+  // pool. Ordering the two nested arrays (session_exercises, and its own
+  // nested exercise_sets) by their dotted path is the well-supported case
+  // for referencedTable ordering - reordering a one-to-many child array -
+  // unlike ordering top-level rows by a many-to-one parent, which is the
+  // ambiguous case avoided elsewhere in this file.
   const { data: sessions, error } = await supabase
     .from("sessions")
-    .select("id, session_date, notes, locations(id, name)")
-    .eq("session_date", dateKey);
+    .select(
+      `id, session_date, notes, locations(id, name),
+       session_exercises(
+         id, notes, order_index,
+         exercises(id, name, cardio_fields),
+         body_parts(id, name, color_hex, is_cardio),
+         exercise_sets(*)
+       )`
+    )
+    .eq("session_date", dateKey)
+    .order("order_index", { referencedTable: "session_exercises" })
+    .order("set_number", { referencedTable: "session_exercises.exercise_sets" });
   if (error) throw error;
   if (!sessions || sessions.length === 0) return [];
 
-  const results: DaySessionDetail[] = [];
+  type NestedBlock = {
+    id: string;
+    notes: string | null;
+    exercises: { id: string; name: string; cardio_fields: DayExerciseDetail["cardio_fields"] } | null;
+    body_parts: { id: string; name: string; color_hex: string; is_cardio: boolean } | null;
+    exercise_sets: DayExerciseDetail["sets"];
+  };
+  type NestedSession = {
+    id: string;
+    session_date: string;
+    notes: string | null;
+    locations: { id: string; name: string } | null;
+    session_exercises: NestedBlock[];
+  };
 
-  for (const session of sessions) {
-    const location = (
-      session as unknown as { locations: { id: string; name: string } }
-    ).locations;
+  const results: DaySessionDetail[] = (sessions as unknown as NestedSession[]).map(
+    (session) => {
+      const exercises: DayExerciseDetail[] = (session.session_exercises ?? [])
+        .filter((b) => b.exercises && b.body_parts)
+        .map((b) => ({
+          session_exercise_id: b.id,
+          exercise_id: b.exercises!.id,
+          exercise_name: b.exercises!.name,
+          body_part_id: b.body_parts!.id,
+          body_part_name: b.body_parts!.name,
+          color_hex: b.body_parts!.color_hex,
+          is_cardio: b.body_parts!.is_cardio,
+          cardio_fields: b.exercises!.cardio_fields,
+          notes: b.notes,
+          sets: b.exercise_sets ?? [],
+        }));
 
-    const { data: blocks } = await supabase
-      .from("session_exercises")
-      .select(
-        "id, notes, order_index, exercises(id, name, cardio_fields), body_parts(id, name, color_hex, is_cardio)"
-      )
-      .eq("session_id", session.id)
-      .order("order_index");
-
-    const exercises = [];
-    for (const b of blocks ?? []) {
-      const ex = (
-        b as unknown as {
-          exercises: {
-            id: string;
-            name: string;
-            cardio_fields: DayExerciseDetail["cardio_fields"];
-          };
-        }
-      ).exercises;
-      const bp = (
-        b as unknown as {
-          body_parts: {
-            id: string;
-            name: string;
-            color_hex: string;
-            is_cardio: boolean;
-          };
-        }
-      ).body_parts;
-      const { data: sets } = await supabase
-        .from("exercise_sets")
-        .select("*")
-        .eq("session_exercise_id", b.id)
-        .order("set_number");
-
-      exercises.push({
-        session_exercise_id: b.id,
-        exercise_id: ex.id,
-        exercise_name: ex.name,
-        body_part_id: bp.id,
-        body_part_name: bp.name,
-        color_hex: bp.color_hex,
-        is_cardio: bp.is_cardio,
-        cardio_fields: ex.cardio_fields,
-        notes: b.notes,
-        sets: sets ?? [],
-      });
+      return {
+        session_id: session.id,
+        session_date: session.session_date,
+        location_id: session.locations?.id ?? "",
+        location_name: session.locations?.name ?? "",
+        notes: session.notes,
+        exercises,
+      };
     }
-
-    results.push({
-      session_id: session.id,
-      session_date: session.session_date,
-      location_id: location.id,
-      location_name: location.name,
-      notes: session.notes,
-      exercises,
-    });
-  }
+  );
 
   return results;
 }

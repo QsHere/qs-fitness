@@ -46,9 +46,35 @@ const config: Config = {
           "0%": { transform: "scale(0.9)", opacity: "0" },
           "100%": { transform: "scale(1)", opacity: "1" },
         },
+        "gym-bob": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(5px)" },
+        },
+        "gym-wobble": {
+          "0%, 100%": { transform: "rotate(-4deg)" },
+          "50%": { transform: "rotate(4deg)" },
+        },
+        "gym-curl": {
+          "0%, 100%": { transform: "rotate(8deg)" },
+          "50%": { transform: "rotate(-72deg)" },
+        },
+        "gym-run-bounce": {
+          "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
+          "25%": { transform: "translateY(-3px) rotate(-3deg)" },
+          "75%": { transform: "translateY(-3px) rotate(3deg)" },
+        },
+        "gym-dash": {
+          "0%, 100%": { opacity: "0" },
+          "50%": { opacity: "1" },
+        },
       },
       animation: {
         "pop-in": "pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+        "gym-bob": "gym-bob 0.9s ease-in-out infinite",
+        "gym-wobble": "gym-wobble 0.9s ease-in-out infinite",
+        "gym-curl": "gym-curl 1.1s ease-in-out infinite",
+        "gym-run-bounce": "gym-run-bounce 0.5s ease-in-out infinite",
+        "gym-dash": "gym-dash 0.5s ease-in-out infinite",
       },
     },
   },

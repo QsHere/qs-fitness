@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { GymLoader } from "@/components/ui/GymLoader";
 import { ExerciseTrendChart, type ChartPoint } from "@/components/analytics/ExerciseTrendChart";
 import { getCardioHistory, getExerciseHistory } from "@/lib/actions";
 import { cn, formatFriendlyDate } from "@/lib/utils";
@@ -76,11 +77,7 @@ export function ExerciseDetailSheet({
           </button>
         </div>
 
-        {loading && (
-          <div className="flex h-56 items-center justify-center text-sm text-ink-faint">
-            Loading...
-          </div>
-        )}
+        {loading && <GymLoader label="Crunching the numbers..." />}
 
         {!loading && target && !target.isCardio && strength && (
           <div className="space-y-4">

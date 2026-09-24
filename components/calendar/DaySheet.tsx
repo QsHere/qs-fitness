@@ -6,6 +6,7 @@ import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Button } from "@/components/ui/Button";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { GymLoader } from "@/components/ui/GymLoader";
 import { SetEditor } from "@/components/logger/SetEditor";
 import {
   deleteSession,
@@ -95,9 +96,7 @@ export function DaySheet({
           </button>
         </div>
 
-        {sessions === null && (
-          <div className="py-10 text-center text-sm text-ink-faint">Loading...</div>
-        )}
+        {sessions === null && <GymLoader label="Fetching that day..." />}
 
         {sessions?.length === 0 && (
           <Button
