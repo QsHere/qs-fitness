@@ -11,6 +11,7 @@ import { ExercisePicker } from "@/components/logger/ExercisePicker";
 import { SetEditor } from "@/components/logger/SetEditor";
 import {
   addCustomBodyPart,
+  addCustomLocation,
   addCustomExercise,
   addExerciseToSession,
   getExercisesForBodyPart,
@@ -90,7 +91,7 @@ type Step =
   | { name: "review" };
 
 export function LogFlow({
-  locations,
+  locations: initialLocations,
   bodyParts: initialBodyParts,
 }: {
   locations: LocationRow[];
@@ -111,6 +112,7 @@ export function LogFlow({
   const restoredDraft = draftRef.current;
 
   const [bodyParts, setBodyParts] = useState(initialBodyParts);
+  const [locations, setLocations] = useState(initialLocations);
   const [dateKey, setDateKey] = useState(
     restoredDraft?.dateKey ?? dateParam ?? toDateKey(new Date())
   );
@@ -257,6 +259,14 @@ export function LogFlow({
     await selectExercise(bp, ex);
   };
 
+  const addNewLocation = async () => {
+    const name = window.prompt("Name this gym");
+    if (!name?.trim()) return;
+    const loc = await addCustomLocation(name.trim());
+    setLocations((prev) => [...prev, loc]);
+    setLocationId(loc.id);
+  };
+
   const addNewBodyPart = async () => {
     const name = window.prompt("Name this body part (e.g. Neck, Forearm)");
     if (!name?.trim()) return;
@@ -400,6 +410,12 @@ export function LogFlow({
                       value={locationId}
                       onChange={setLocationId}
                     />
+                    <button
+                      onClick={addNewLocation}
+                      className="mt-1 self-start text-[13px] font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+                    >
+                      + Add gym
+                    </button>
                   </div>
                   <Button
                     className="w-full"

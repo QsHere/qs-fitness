@@ -34,6 +34,19 @@ export async function getLocations(): Promise<LocationRow[]> {
   return data ?? [];
 }
 
+export async function addCustomLocation(name: string): Promise<LocationRow> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("locations")
+    .insert({ name, is_default: false })
+    .select()
+    .single();
+  if (error) throw error;
+  revalidatePath("/");
+  revalidatePath("/log");
+  return data;
+}
+
 export async function getBodyParts(): Promise<BodyPartRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
