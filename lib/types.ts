@@ -126,7 +126,7 @@ export interface CalendarDaySummary {
 
 export interface OverviewStats {
   allTime: number;
-  thisWeek: number;
+  legDays: number;
 }
 
 // ---- Analytics / PR types --------------------------------------------------
