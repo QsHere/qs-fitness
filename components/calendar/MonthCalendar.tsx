@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn, toDateKey } from "@/lib/utils";
 import type { CalendarDaySummary } from "@/lib/types";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -60,7 +60,9 @@ export function MonthCalendar({
 
   const colorsByDate = new Map(days.map((d) => [d.date, d.bodyPartColors]));
   const firstOfMonth = new Date(year, month - 1, 1);
-  const startWeekday = firstOfMonth.getDay();
+  // getDay() is always Sun=0..Sat=6 regardless of how we display the week -
+  // remap so Monday lines up with column 0 under the header above.
+  const startWeekday = (firstOfMonth.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayKey = toDateKey(new Date());
 

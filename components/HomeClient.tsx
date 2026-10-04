@@ -55,8 +55,8 @@ export function HomeClient({
   }, []);
 
   // "This month" follows whichever month the calendar is showing (updates
-  // on every navigate below). "All time" and "this week" intentionally stay
-  // fixed to real today regardless of what's being browsed.
+  // on every navigate below). "All time" and "leg day" intentionally stay
+  // fixed to your whole history regardless of what's being browsed.
   const navigate = (direction: -1 | 1) => {
     let newMonth = month + direction;
     let newYear = year;
@@ -135,8 +135,8 @@ export function HomeClient({
 
       <div className="grid grid-cols-3 gap-3 px-5 pt-3">
         <StatCard label="All time" value={overviewStats.allTime} />
+        <StatCard label="Leg day" value={overviewStats.legDays} />
         <StatCard label="This month" value={monthSessionsCount} loading={isMonthPending} />
-        <StatCard label="This week" value={overviewStats.thisWeek} />
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-5 pb-6 pt-10 [background:linear-gradient(to_top,#F6F5F2_60%,transparent)]">
