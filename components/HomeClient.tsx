@@ -6,7 +6,8 @@ import { Plus, TrendingUp } from "lucide-react";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { Legend } from "@/components/calendar/Legend";
 import { DaySheet } from "@/components/calendar/DaySheet";
-import { getMonthCalendar } from "@/lib/actions";
+import { StatsBreakdownSheet, type BreakdownTarget } from "@/components/calendar/StatsBreakdownSheet";
+import { getAllTimeBreakdown, getMonthBreakdown, getMonthCalendar } from "@/lib/actions";
 import {
   getCachedMonth,
   prefetchDayDetails,
@@ -36,6 +37,7 @@ export function HomeClient({
   const [days, setDays] = useState(initialDays);
   const [monthSessionsCount, setMonthSessionsCount] = useState(initialMonthSessionsCount);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [breakdownTarget, setBreakdownTarget] = useState<BreakdownTarget | null>(null);
   const [isMonthPending, startTransition] = useTransition();
   const requestToken = useRef(0);
 
@@ -55,8 +57,8 @@ export function HomeClient({
   }, []);
 
   // "This month" follows whichever month the calendar is showing (updates
-  // on every navigate below). "All time" and "leg day" intentionally stay
-  // fixed to your whole history regardless of what's being browsed.
+  // on every navigate below). "All time" intentionally stays fixed to your
+  // whole history regardless of what's being browsed.
   const navigate = (direction: -1 | 1) => {
     let newMonth = month + direction;
     let newYear = year;
@@ -96,6 +98,11 @@ export function HomeClient({
     });
   };
 
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("en-GB", {
+    month: "long",
+    year: "numeric",
+  });
+
   return (
     <div>
       <header className="flex items-start justify-between px-5 pb-2 pt-8">
@@ -133,10 +140,33 @@ export function HomeClient({
 
       <Legend />
 
-      <div className="grid grid-cols-3 gap-3 px-5 pt-3">
-        <StatCard label="All time" value={overviewStats.allTime} />
-        <StatCard label="Leg day" value={overviewStats.legDays} />
-        <StatCard label="This month" value={monthSessionsCount} loading={isMonthPending} />
+      <div className="grid grid-cols-2 gap-3 px-5 pt-3">
+        <StatCard
+          label="All time"
+          value={overviewStats.allTime}
+          onClick={() =>
+            setBreakdownTarget({
+              title: "All time breakdown",
+              totalSessions: overviewStats.allTime,
+              fetcher: getAllTimeBreakdown,
+            })
+          }
+        />
+        <StatCard
+          label="This month"
+          value={monthSessionsCount}
+          loading={isMonthPending}
+          onClick={() =>
+            setBreakdownTarget({
+              title: `${monthLabel} breakdown`,
+              totalSessions: monthSessionsCount,
+              // Captures the current year/month at click time, so this
+              // always matches whichever month you've swiped to - not
+              // necessarily the real current month.
+              fetcher: () => getMonthBreakdown(year, month),
+            })
+          }
+        />
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md px-5 pb-6 pt-10 [background:linear-gradient(to_top,#F6F5F2_60%,transparent)]">
@@ -149,6 +179,7 @@ export function HomeClient({
       </div>
 
       <DaySheet dateKey={selectedDate} onClose={() => setSelectedDate(null)} />
+      <StatsBreakdownSheet target={breakdownTarget} onClose={() => setBreakdownTarget(null)} />
     </div>
   );
 }
@@ -157,13 +188,18 @@ function StatCard({
   label,
   value,
   loading,
+  onClick,
 }: {
   label: string;
   value: number;
   loading?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className="rounded-2xl bg-white p-4 text-center shadow-soft">
+    <button
+      onClick={onClick}
+      className="rounded-2xl bg-white p-4 text-center shadow-soft transition-transform active:scale-[0.97]"
+    >
       <p
         className={`font-display text-2xl font-semibold tracking-tight transition-opacity ${
           loading ? "opacity-40" : "opacity-100"
@@ -172,6 +208,6 @@ function StatCard({
         {value}
       </p>
       <p className="mt-0.5 text-[11px] font-medium text-ink-faint">{label}</p>
-    </div>
+    </button>
   );
 }

@@ -223,37 +223,79 @@ export async function getOverviewStats(): Promise<{
   allTime: number;
   legDays: number;
 }> {
+  // legDays is no longer shown directly on the home screen (it moved into
+  // the tap-to-expand breakdown sheets below), but it's kept here so
+  // lib/types.ts's OverviewStats shape doesn't need another manual edit -
+  // avoids repeating the exact cross-file sync issue that broke the last
+  // two deploys. It's a cheap query either way.
   const supabase = createClient();
-
-  const [allTimeRes, legDayRes] = await Promise.all([
+  const [allTimeRes, legDays] = await Promise.all([
     supabase.from("sessions").select("id", { count: "exact", head: true }),
-    // !inner on both embeds matters here: without it, filtering by
-    // body_parts.name only affects whether that nested object is populated,
-    // not whether the row is included - !inner turns it into a real WHERE
-    // that actually restricts which session_exercises rows come back.
-    supabase
-      .from("session_exercises")
-      .select("sessions!inner(session_date), body_parts!inner(name)")
-      .eq("body_parts.name", "Lower Body"),
+    countDistinctTrainingDays("Lower Body"),
   ]);
-
   if (allTimeRes.error) throw allTimeRes.error;
-  if (legDayRes.error) throw legDayRes.error;
+  return { allTime: allTimeRes.count ?? 0, legDays };
+}
 
-  // "Leg day" is a count of distinct calendar days, not rows - if you ever
-  // logged lower-body work at two gyms on the same date, that's still one
-  // leg day, not two. Counting distinct dates in code (rather than via a
-  // DB-level DISTINCT, which the JS client doesn't expose directly for this
-  // shape of query) is trivial at this data scale.
-  type LegDayRow = { sessions: { session_date: string } };
+export interface StatsBreakdown {
+  legDays: number;
+  cardioDays: number;
+}
+
+// Shared by both breakdown functions below: counts distinct calendar days
+// (not rows) that included a given body part - e.g. logging lower-body work
+// at two gyms on the same date is still one leg day, not two. Counting
+// distinct dates in code (rather than a DB-level DISTINCT, which the JS
+// client doesn't expose directly for this shape of query) is trivial at
+// this data scale.
+async function countDistinctTrainingDays(
+  bodyPartName: string,
+  dateRange?: { start: string; end: string }
+): Promise<number> {
+  const supabase = createClient();
+  // !inner on both embeds matters here: without it, filtering by an embedded
+  // column only affects whether that nested object is populated, not
+  // whether the row is included - !inner turns it into a real WHERE that
+  // actually restricts which session_exercises rows come back.
+  let query = supabase
+    .from("session_exercises")
+    .select("sessions!inner(session_date), body_parts!inner(name)")
+    .eq("body_parts.name", bodyPartName);
+  if (dateRange) {
+    query = query
+      .gte("sessions.session_date", dateRange.start)
+      .lte("sessions.session_date", dateRange.end);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+
+  type Row = { sessions: { session_date: string } };
   const uniqueDates = new Set(
-    ((legDayRes.data ?? []) as unknown as LegDayRow[]).map((r) => r.sessions.session_date)
+    ((data ?? []) as unknown as Row[]).map((r) => r.sessions.session_date)
   );
+  return uniqueDates.size;
+}
 
-  return {
-    allTime: allTimeRes.count ?? 0,
-    legDays: uniqueDates.size,
-  };
+export async function getAllTimeBreakdown(): Promise<StatsBreakdown> {
+  const [legDays, cardioDays] = await Promise.all([
+    countDistinctTrainingDays("Lower Body"),
+    countDistinctTrainingDays("Cardio"),
+  ]);
+  return { legDays, cardioDays };
+}
+
+export async function getMonthBreakdown(
+  year: number,
+  month: number // 1-12
+): Promise<StatsBreakdown> {
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(endDate).padStart(2, "0")}`;
+  const [legDays, cardioDays] = await Promise.all([
+    countDistinctTrainingDays("Lower Body", { start, end }),
+    countDistinctTrainingDays("Cardio", { start, end }),
+  ]);
+  return { legDays, cardioDays };
 }
 
 // ---------------------------------------------------------------------------
