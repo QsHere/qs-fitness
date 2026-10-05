@@ -213,60 +213,46 @@ export async function getMonthCalendar(
 // ---------------------------------------------------------------------------
 // Overview stats
 //
-// "All time" and "this week" always reflect real today, independent of
-// whatever month the calendar is scrolled to - "this month" instead comes
+// "All time" and "leg days" always reflect your whole history, independent
+// of whatever month the calendar is scrolled to - "this month" instead comes
 // from getMonthCalendar above, since it's meant to track the month you're
 // currently looking at.
-//
-// Date math here is anchored to a fixed timezone rather than server local
-// time: Vercel's serverless functions run in UTC, so "today"/"this Monday"
-// computed from a bare `new Date()` would be wrong for roughly the first 8
-// hours of every Malaysia day (UTC+8) - e.g. a session logged at 1am on a
-// Monday would still read as "last week" server-side, even though it's
-// already Monday locally. Update APP_TIMEZONE if you're ever not in MY/SG.
 // ---------------------------------------------------------------------------
-
-const APP_TIMEZONE = "Asia/Kuala_Lumpur";
-
-function todayKeyInAppTimezone(): string {
-  // en-CA locale formats as YYYY-MM-DD, which is exactly what session_date
-  // comparisons need - no manual string assembly required.
-  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE }).format(
-    new Date()
-  );
-}
-
-function mondayOfThisWeek(): string {
-  const [y, m, d] = todayKeyInAppTimezone().split("-").map(Number);
-  // UTC-anchored on purpose: this is pure calendar-date arithmetic on a
-  // Y/M/D triple that's already been resolved to the right timezone above,
-  // so there's no DST/local-offset shift to worry about here.
-  const date = new Date(Date.UTC(y, m - 1, d));
-  const day = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-  date.setUTCDate(date.getUTCDate() - day);
-  return date.toISOString().slice(0, 10);
-}
 
 export async function getOverviewStats(): Promise<{
   allTime: number;
-  thisWeek: number;
+  legDays: number;
 }> {
   const supabase = createClient();
 
-  const [allTimeRes, weekRes] = await Promise.all([
+  const [allTimeRes, legDayRes] = await Promise.all([
     supabase.from("sessions").select("id", { count: "exact", head: true }),
+    // !inner on both embeds matters here: without it, filtering by
+    // body_parts.name only affects whether that nested object is populated,
+    // not whether the row is included - !inner turns it into a real WHERE
+    // that actually restricts which session_exercises rows come back.
     supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .gte("session_date", mondayOfThisWeek()),
+      .from("session_exercises")
+      .select("sessions!inner(session_date), body_parts!inner(name)")
+      .eq("body_parts.name", "Lower Body"),
   ]);
 
   if (allTimeRes.error) throw allTimeRes.error;
-  if (weekRes.error) throw weekRes.error;
+  if (legDayRes.error) throw legDayRes.error;
+
+  // "Leg day" is a count of distinct calendar days, not rows - if you ever
+  // logged lower-body work at two gyms on the same date, that's still one
+  // leg day, not two. Counting distinct dates in code (rather than via a
+  // DB-level DISTINCT, which the JS client doesn't expose directly for this
+  // shape of query) is trivial at this data scale.
+  type LegDayRow = { sessions: { session_date: string } };
+  const uniqueDates = new Set(
+    ((legDayRes.data ?? []) as unknown as LegDayRow[]).map((r) => r.sessions.session_date)
+  );
 
   return {
     allTime: allTimeRes.count ?? 0,
-    thisWeek: weekRes.count ?? 0,
+    legDays: uniqueDates.size,
   };
 }
 
