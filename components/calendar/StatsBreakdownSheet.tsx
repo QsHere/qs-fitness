@@ -70,7 +70,7 @@ export function StatsBreakdownSheet({
         {data && (
           <div className="grid grid-cols-2 gap-3">
             <BreakdownCard label="Leg days" value={data.legDays} color={LEG_COLOR} />
-            <BreakdownCard label="Cardio days" value={data.cardioDays} color={CARDIO_COLOR} />
+            <BreakdownCard label="Cardio only" value={data.cardioDays} color={CARDIO_COLOR} />
           </div>
         )}
       </div>

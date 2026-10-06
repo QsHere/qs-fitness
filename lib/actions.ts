@@ -276,10 +276,43 @@ async function countDistinctTrainingDays(
   return uniqueDates.size;
 }
 
+// "Cardio days" means pure cardio days - e.g. an upper-body-plus-cardio day
+// should NOT count. That's different from countDistinctTrainingDays (which
+// just checks whether a body part appeared at all), so this fetches every
+// body part trained per date in range and only counts a date where the
+// resulting set is exactly {"Cardio"}.
+async function countCardioOnlyDays(dateRange?: { start: string; end: string }): Promise<number> {
+  const supabase = createClient();
+  let query = supabase
+    .from("session_exercises")
+    .select("sessions!inner(session_date), body_parts!inner(name)");
+  if (dateRange) {
+    query = query
+      .gte("sessions.session_date", dateRange.start)
+      .lte("sessions.session_date", dateRange.end);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+
+  type Row = { sessions: { session_date: string }; body_parts: { name: string } };
+  const bodyPartsByDate = new Map<string, Set<string>>();
+  for (const r of (data ?? []) as unknown as Row[]) {
+    const date = r.sessions.session_date;
+    if (!bodyPartsByDate.has(date)) bodyPartsByDate.set(date, new Set());
+    bodyPartsByDate.get(date)!.add(r.body_parts.name);
+  }
+
+  let count = 0;
+  for (const parts of bodyPartsByDate.values()) {
+    if (parts.size === 1 && parts.has("Cardio")) count++;
+  }
+  return count;
+}
+
 export async function getAllTimeBreakdown(): Promise<StatsBreakdown> {
   const [legDays, cardioDays] = await Promise.all([
     countDistinctTrainingDays("Lower Body"),
-    countDistinctTrainingDays("Cardio"),
+    countCardioOnlyDays(),
   ]);
   return { legDays, cardioDays };
 }
@@ -293,7 +326,7 @@ export async function getMonthBreakdown(
   const end = `${year}-${String(month).padStart(2, "0")}-${String(endDate).padStart(2, "0")}`;
   const [legDays, cardioDays] = await Promise.all([
     countDistinctTrainingDays("Lower Body", { start, end }),
-    countDistinctTrainingDays("Cardio", { start, end }),
+    countCardioOnlyDays({ start, end }),
   ]);
   return { legDays, cardioDays };
 }
